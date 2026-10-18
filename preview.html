@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Прототип Crypto Analytics</title>
+<style>
+/* Витрина: один и тот же app.html в окне браузера и в рамке iPhone. На телефоне сразу открываем приложение. */
+:root{--bg:#f2f2f4;--ink:#0b0b0c;--mut:#6e6e73;--f:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Helvetica Neue",Arial,sans-serif;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f);-webkit-font-smoothing:antialiased;padding:28px 16px 40px}
+.wrap{max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:20px;align-items:center}
+header{width:100%;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px}
+h1{margin:0;font-size:30px;letter-spacing:-.03em}
+p{margin:6px 0 0;color:var(--mut);max-width:62ch;line-height:1.4}
+.seg{display:inline-flex;background:#e3e3e8;border-radius:12px;padding:3px}
+.seg button{font:inherit;font-weight:600;font-size:14px;border:0;background:none;padding:9px 18px;border-radius:9px;cursor:pointer;color:var(--mut)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.stage{width:100%;display:flex;justify-content:center;gap:40px;flex-wrap:wrap;align-items:flex-start}
+.browser{width:100%;max-width:1360px;border-radius:14px;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,.18);background:#000}
+.bbar{height:38px;background:#2b2b2e;display:flex;align-items:center;gap:7px;padding:0 14px}
+.bbar i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.bbar i:nth-child(2){background:#febc2e}.bbar i:nth-child(3){background:#28c840}
+.bbar span{margin-left:14px;background:#1c1c1e;color:#8e8e93;font-size:12px;border-radius:7px;padding:4px 14px}
+.browser iframe{display:block;width:100%;height:820px;border:0}
+.phone{width:402px;height:870px;border-radius:62px;background:#000;border:12px solid #141416;box-shadow:0 0 0 2px #3a3a3c,0 40px 80px rgba(0,0,0,.25);overflow:hidden;position:relative;flex:none}
+.phone::before{content:"";position:absolute;top:11px;left:50%;transform:translateX(-50%);width:120px;height:34px;border-radius:20px;background:#000;z-index:2}
+.phone iframe{display:block;width:100%;height:100%;border:0;padding-top:50px;background:#000}
+.hint{font-size:13px;color:var(--mut);text-align:center}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Прототип Crypto Analytics</h1>
+      <p>Интерактивный: всё кликается, сумма пересчитывается, решения записываются в журнал. Переключатель «Рынок перегрет» (меню слева или Настройки на телефоне) показывает, как продукт реагирует на рост риска.</p></div>
+    <div class="seg" role="tablist"><button class="on" data-m="d">Десктоп</button><button data-m="p">Телефон</button><button data-m="b">Оба</button></div>
+  </header>
+  <div class="stage">
+    <div class="browser" id="d"><div class="bbar"><i></i><i></i><i></i><span>crypto-analytics</span></div><iframe src="index.html" title="Прототип, десктоп"></iframe></div>
+    <div class="phone hidden" id="p"><iframe src="index.html" title="Прототип, телефон"></iframe></div>
+  </div>
+  <p class="hint">Главную страницу можно открыть и напрямую: на узком окне или телефоне он сам перестраивается в мобильную версию.</p>
+</div>
+<script>
+if (matchMedia('(max-width:700px)').matches) location.replace('index.html');
+const d=document.getElementById('d'), p=document.getElementById('p');
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.seg button').forEach(x=>x.classList.toggle('on',x===b));
+  const m=b.dataset.m;
+  d.classList.toggle('hidden',m==='p'); p.classList.toggle('hidden',m==='d');
+  d.style.maxWidth = m==='b' ? '980px' : '1360px';
+  d.style.flex = m==='b' ? '1 1 600px' : '';
+});
+</script>
+</body>
+</html>
