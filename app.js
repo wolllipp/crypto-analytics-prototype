@@ -66,7 +66,7 @@ const TRADES = (() => {
 })();
 
 const DEFAULT = () => ({
-  onb:'land', limit:300, customLim:false, country:'BY', email:'', capital:5000,
+  onb:'land', cons:{ model:false, loss:false }, consent:null, limit:300, customLim:false, country:'BY', email:'', capital:5000,
   view:'today', alertOn:true, noSignal:false,
   stop:'', fee:'', slip:'', pos:'',
   hypOpen:false, hyp:null, conf:null, note:'',
@@ -446,6 +446,7 @@ function vProfile() {
         row({ glyph:'bell', title:'Оповещения', sub:'события, частота, тихие часы', attrs:'data-go="alerts"' }),
         row({ glyph:'logo', title:'Ассистент', sub:aiLive() ? 'подключён: ' + esc(modelName()) : 'демо-режим', attrs:'data-go="assistant"' }),
         row({ glyph:'info', title:'Как читать прогноз', sub:'4 правила', attrs:'data-sheet="rules"' }),
+        row({ glyph:'shield', title:'Условия использования', sub:S.consent ? `приняты ${new Date(S.consent.at).toLocaleDateString('ru-RU')}` : 'не приняты', attrs:'data-sheet="terms"' }),
         row({ glyph:'wallet', title:'Подписка', val:'Free' }),
       ])}
     </section>
@@ -536,8 +537,10 @@ function vExample() {
     <div class="sticky ex"><button class="btn w press" data-act="login">Задать свой лимит</button></div>
   </div>`;
 }
+const TERMS_VERSION = '2026-10-18';
+const consentRow = (k, text) => `<button class="cons press ${S.cons[k] ? 'on' : ''}" data-consent="${k}" role="checkbox" aria-checked="${!!S.cons[k]}"><span class="box2">${ico('check')}</span><span>${text}</span></button>`;
 function vOnb(dir) {
-  const n = 4, dotsH = `<div class="dots">${Array.from({length:n}, (_, i) => `<i class="${i <= S.onb ? 'on' : ''}"></i>`).join('')}</div>`;
+  const n = 5, dotsH = `<div class="dots">${Array.from({length:n}, (_, i) => `<i class="${i <= S.onb ? 'on' : ''}"></i>`).join('')}</div>`;
   let body;
   if (S.onb === 0) body = `${dotsH}
     <h1>Сколько вы готовы потерять за плохую неделю?</h1>
@@ -561,12 +564,21 @@ function vOnb(dir) {
       row({ glyph:'info', title:'Иногда модель молчит', sub:'Это честнее, чем угадывать.' }),
     ])}
     <button class="btn w press" data-onb="3">Понятно</button><button class="btn link" data-onb="1" data-back>Назад</button>`;
-  else body = `${dotsH}
+  else if (S.onb === 3) body = `${dotsH}
     <h1>Вход по почте</h1>
     <p class="p">Паспорт и карта нам не нужны: деньги и проверка личности остаются на бирже.</p>
     <div class="inp"><input type="email" placeholder="you@example.com" value="${esc(S.email)}" data-in="email" autocomplete="email" autocapitalize="none" enterkeyhint="go" aria-label="Почта"></div>
     <p class="fine c">Продолжая, вы соглашаетесь на обработку почты и записей о решениях. Деньги и токены мы не храним.</p>
-    <button class="btn w press" data-onb="done">Войти и начать</button><button class="btn link" data-onb="2" data-back>Назад</button>`;
+    <button class="btn w press" data-onb="4">Продолжить</button><button class="btn link" data-onb="2" data-back>Назад</button>`;
+  else body = `${dotsH}
+    <h1>Последнее: ваше согласие</h1>
+    <p class="p">Решения о сделках принимаете вы. Мы считаем и показываем, но не торгуем за вас и не отвечаем за результат.</p>
+    <div class="consent">
+      ${consentRow('model', 'Я понимаю, что Crypto Analytics показывает расчёты по модели. Это не инвестиционный совет и не прогноз цены.')}
+      ${consentRow('loss', 'Я понимаю, что могу потерять все вложенные деньги. Решения о сделках принимаю сам, и сервис не несёт ответственности за мои убытки.')}
+    </div>
+    <button class="btn link" data-sheet="terms">Прочитать условия использования</button>
+    <button class="btn w press" data-onb="done" ${S.cons.model && S.cons.loss ? '' : 'disabled'}>Принять и начать</button><button class="btn link" data-onb="3" data-back>Назад</button>`;
   return `<div class="onb"><div class="box ${dir || ''}">${body}</div></div>`;
 }
 
@@ -637,6 +649,16 @@ const SHEETS = {
       row({ glyph:'wave', title:'Широкий диапазон — неопределённость', sub:'Значит, модель не уверена.' }),
       row({ glyph:'close', title:'Пропустить — нормально', sub:'Это тоже решение, мы его запишем.' }),
       row({ glyph:'info', title:'Иногда модель молчит', sub:'Это честнее, чем угадывать.' })])}
+      <button class="btn d press" data-act="close">Понятно</button>`; },
+  terms() { return `<h2 class="l">Условия использования</h2>
+      <p class="fine">Версия от 18.10.2026. Черновик для прототипа, текст нужно согласовать с юристом.</p>
+      ${grp([
+        row({ glyph:'info', title:'Что такое сервис', sub:'Информационный и аналитический сервис. Показывает диапазоны и вероятности по модели, считает сумму под ваш лимит. Не даёт инвестиционных советов и не прогнозирует цену.' }),
+        row({ glyph:'shield', title:'Риски', sub:'Токены не являются средством платежа и не обеспечены государством. Цена может резко меняться, возможна потеря всех вложенных денег, а также потери из-за сбоев и хищений.' }),
+        row({ glyph:'close', title:'Ответственность', sub:'Решения о сделках вы принимаете самостоятельно. Сервис не несёт ответственности за ваши убытки и упущенную выгоду, в том числе если вы опирались на расчёты, оповещения или ответы ассистента.' }),
+        row({ glyph:'lock', title:'Деньги и сделки', sub:'Мы не храним деньги и токены и не отправляем заявки. Сделки, деньги и проверка личности — на бирже-партнёре по её правилам.' }),
+        row({ glyph:'pie', title:'Модель может ошибаться', sub:'Прошлые результаты модели не гарантируют будущих. Промахи мы показываем в архиве.' }),
+      ])}
       <button class="btn d press" data-act="close">Понятно</button>`; },
   jitem(id) { const j = S.journal.find(x => x.id === id); const H = { range:'боковик', up:'рост', down:'падение', unk:'не знаю' };
     return `<h2 class="l">${jTitle(j)}</h2><p class="body mut">${j.date}</p>
@@ -1066,8 +1088,9 @@ document.addEventListener('click', e => {
   if (d.seg) { const [k, v] = d.seg.split(':'); S[k] = v; save(); return render(); }
   if (d.sheet) return openSheet(d.sheet);
   if (d.lim) { if (d.lim === 'custom') S.customLim = true; else { S.customLim = false; S.limit = +d.lim; } save(); return render(); }
+  if (d.consent) { S.cons[d.consent] = !S.cons[d.consent]; save(); t.classList.toggle('on', S.cons[d.consent]); t.setAttribute('aria-checked', S.cons[d.consent]); const go = document.querySelector('[data-onb="done"]'); if (go) go.disabled = !(S.cons.model && S.cons.loss); return; }
   if (d.onb) {
-    if (d.onb === 'done') { S.onb = 'done'; S.view = 'today'; save(); history.replaceState(null, '', '#/today'); render({ nav:'tab' }); setTimeout(() => toast('Лимит ' + usd(S.limit) + ' сохранён'), 200); return; }
+    if (d.onb === 'done') { if (!(S.cons.model && S.cons.loss)) return; S.consent = { version:TERMS_VERSION, at:new Date().toISOString() }; S.onb = 'done'; S.view = 'today'; save(); history.replaceState(null, '', '#/today'); render({ nav:'tab' }); setTimeout(() => toast('Лимит ' + usd(S.limit) + ' сохранён'), 200); return; }
     S.onb = +d.onb; save(); return render({ dir: d.back !== undefined ? 'bwd' : 'fwd' });
   }
   if (d.country) { S.country = d.country; save(); root.querySelectorAll('.pick').forEach(p => p.classList.toggle('on', p.dataset.country === S.country)); return; }

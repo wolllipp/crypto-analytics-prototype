@@ -462,3 +462,14 @@ body.docked .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
   .exchart svg{height:140px}
 }
 [data-max]{min-width:44px;min-height:44px}
+
+/* согласие в конце онбординга: вся строка — цель нажатия, квадратная галочка */
+.consent{display:flex;flex-direction:column;gap:8px}
+.cons{display:flex;align-items:flex-start;gap:12px;width:100%;min-height:56px;padding:14px;border-radius:18px;background:var(--card);text-align:left;font-size:15px;line-height:1.4;color:var(--fg);transition:background-color 180ms ease}
+.cons.on{background:var(--card-2)}
+.cons .box2{flex:none;width:22px;height:22px;margin-top:1px;border-radius:7px;border:1.5px solid var(--mut-2);display:grid;place-items:center;transition:background-color 160ms ease,border-color 160ms ease}
+.cons .box2 svg{width:14px;height:14px;color:#000;opacity:0;transform:scale(.7);transition:opacity 160ms ease,transform 200ms cubic-bezier(.23,1,.32,1)}
+.cons.on .box2{background:#f5f5f7;border-color:#f5f5f7}
+.cons.on .box2 svg{opacity:1;transform:none}
+.onb .btn.w:disabled{opacity:.35}
+@media (prefers-reduced-motion:reduce){ .cons .box2 svg{transition:none;transform:none} }
