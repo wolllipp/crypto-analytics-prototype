@@ -85,6 +85,24 @@ const DEFAULT = () => ({
 let S = DEFAULT();
 const KEY = 'ca-proto-v2';
 try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) S = Object.assign(DEFAULT(), saved); } catch (e) {}
+
+/* тема: «Системная» следует настройке устройства; выбор хранится отдельно от состояния и не сбрасывается «Начать заново» */
+const THEME_KEY = 'ca-theme';
+let THEME = 'system';
+try { THEME = localStorage.getItem(THEME_KEY) || 'system'; } catch (e) {}
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const root = document.documentElement;
+  if (THEME === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', THEME);
+  const dark = THEME === 'dark' || (THEME === 'system' && darkMQ.matches);
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#000000' : '#f2f2f7');
+}
+function setTheme(t) {
+  THEME = t; try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(applyTheme); else applyTheme();
+}
+applyTheme();
+darkMQ.addEventListener('change', () => { if (THEME === 'system') applyTheme(); });
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 
 const M = () => S.alertOn ? MARKET.alert : MARKET.calm;
@@ -451,6 +469,8 @@ function vProfile() {
       ])}
     </section>
     <section class="stackv">
+      ${sec('Оформление')}
+      <div class="seg" role="radiogroup" aria-label="Тема">${[['system', 'Системная'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([k, t]) => `<button class="${THEME === k ? 'on' : ''}" role="radio" aria-checked="${THEME === k}" data-theme-set="${k}">${t}</button>`).join('')}</div>
       ${sec('Демо прототипа')}
       ${grp([
         `<div class="row"><span class="gl">${ico('stack')}</span><span class="rt"><b>Рынок перегрет</b><small>включает оповещения и меняет сценарии</small></span>${toggle('data-act="alerttog"', S.alertOn, 'Рынок перегрет')}</div>`,
@@ -501,8 +521,9 @@ function vAssistant() {
 }
 
 /* ---------- до входа: лендинг, пример прогноза, онбординг ---------- */
+let landReveal = false;
 function vLanding() {
-  return `<div class="land">
+  return `<div class="land${landReveal ? ' reveal' : ''}">
     <header class="lh"><span class="brand"><span class="appic">${ico('logo')}</span>Crypto Analytics</span><button class="btn link press" data-act="login">Войти</button></header>
     <div class="lgrid">
       <section class="lhero">
@@ -1088,6 +1109,7 @@ document.addEventListener('click', e => {
   if (d.seg) { const [k, v] = d.seg.split(':'); S[k] = v; save(); return render(); }
   if (d.sheet) return openSheet(d.sheet);
   if (d.lim) { if (d.lim === 'custom') S.customLim = true; else { S.customLim = false; S.limit = +d.lim; } save(); return render(); }
+  if (d.themeSet) { setTheme(d.themeSet); t.parentNode.querySelectorAll('button').forEach(b => { b.classList.toggle('on', b === t); b.setAttribute('aria-checked', b === t); }); return; }
   if (d.consent) { S.cons[d.consent] = !S.cons[d.consent]; save(); t.classList.toggle('on', S.cons[d.consent]); t.setAttribute('aria-checked', S.cons[d.consent]); const go = document.querySelector('[data-onb="done"]'); if (go) go.disabled = !(S.cons.model && S.cons.loss); return; }
   if (d.onb) {
     if (d.onb === 'done') { if (!(S.cons.model && S.cons.loss)) return; S.consent = { version:TERMS_VERSION, at:new Date().toISOString() }; S.onb = 'done'; S.view = 'today'; save(); history.replaceState(null, '', '#/today'); render({ nav:'tab' }); setTimeout(() => toast('Лимит ' + usd(S.limit) + ' сохранён'), 200); return; }
@@ -1126,7 +1148,7 @@ document.addEventListener('click', e => {
     case 'alerttog': t.setAttribute('aria-checked', !S.alertOn); return setAlert(!S.alertOn);
     case 'nosig': S.noSignal = !S.noSignal; save(); render(); return toast(S.noSignal ? 'Модель молчит: сумма — «Без позиции»' : 'Сигнал вернулся');
     case 'testbanner': return alertBanner();
-    case 'reset': try { localStorage.removeItem(KEY); } catch (e) {} S = DEFAULT(); closeSheet(); fanDrawn = false; history.replaceState(null, '', location.pathname); Object.keys(shown).forEach(k => delete shown[k]); return render();
+    case 'reset': try { localStorage.removeItem(KEY); } catch (e) {} S = DEFAULT(); closeSheet(); fanDrawn = false; history.replaceState(null, '', location.pathname); Object.keys(shown).forEach(k => delete shown[k]); try { sessionStorage.removeItem('ca-intro'); } catch (e) {} render(); return runIntro();
     case 'voice': return openSheet('voice');
     case 'voiceok': S.capital = +d.pcap; S.limit = +d.plim; save(); closeSheet(); toastSoon(`Поняли: ${usd(S.capital)}, лимит ${usd(S.limit)}, 7 дней`); return go('sum');
     case 'listen': return listen(t);
@@ -1190,7 +1212,29 @@ document.addEventListener('keydown', e => {
 /* ---------- старт ---------- */
 document.body.append(layer, banner, toastEl, exl);
 addEventListener('resize', () => { if (shellOn) syncChrome(); });
+/* заставка перед лендингом, как на apple.com: слова по одному, затем рисуется логотип.
+   Один раз за сессию, только CSS-анимации; клик или клавиша пропускают; при «уменьшить движение» не показывается. */
+function runIntro() {
+  if (S.onb !== 'land' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  try { if (sessionStorage.getItem('ca-intro')) return; sessionStorage.setItem('ca-intro', '1'); } catch (e) {}
+  const el = document.createElement('div');
+  el.className = 'intro'; el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `<div class="intro-stage">${['Лимит.', 'Сценарии.', 'Сумма.', 'Решение.'].map((w, i) => `<span class="iw${i === 3 ? ' acc' : ''}" style="--i:${i}">${w}</span>`).join('')}
+    <span class="ib"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 7-9" pathLength="1"/></svg>Crypto Analytics</span></div>
+    <button class="intro-skip" type="button" tabindex="-1">Пропустить</button>`;
+  document.body.append(el);
+  let done = false;
+  /* лендинг уже отрисован под заставкой; когда она начинает таять, проигрываем его вход на глазах у пользователя */
+  const start = () => { if (done) return; done = true; document.removeEventListener('keydown', skip, true); if (S.onb === 'land') { landReveal = true; render(); landReveal = false; } };
+  const skip = () => { if (!el.isConnected) return; start(); const a = el.animate([{ opacity:getComputedStyle(el).opacity }, { opacity:0 }], { duration:300, easing:'cubic-bezier(.23,1,.32,1)', fill:'forwards' }); a.onfinish = () => el.remove(); };
+  el.addEventListener('animationstart', e => { if (e.target === el && e.animationName === 'introOut') start(); });
+  el.addEventListener('animationend', e => { if (e.target === el && e.animationName === 'introOut') el.remove(); });
+  el.addEventListener('click', skip);
+  document.addEventListener('keydown', skip, true);
+}
+
 const startV = location.hash.replace('#/', '');
 if (S.onb === 'done' && VIEWS[startV]) S.view = startV;
 if (S.onb === 'done') history.replaceState(null, '', '#/' + S.view);
 render({ nav:'tab' });
+runIntro();
