@@ -646,14 +646,6 @@ select{background:transparent;border:0;color:var(--mut);font-size:var(--fs-body)
 .coins .chip{display:flex;align-items:center;gap:6px}
 .coins .chip svg{width:16px;height:16px}
 .coins .chip small{font-size:var(--fs-micro);font-weight:600;color:var(--mut)}
-.pricecard{gap:4px}
-.pch{display:flex;align-items:center;gap:var(--s3)}
-.pch b{display:block;font-size:var(--fs-body);font-weight:600}
-.pch small{display:block;font-size:var(--fs-fine);color:var(--mut)}
-.pbig{display:block;font-size:var(--fs-hero2);font-weight:700;letter-spacing:-.04em;line-height:1.1;margin-top:var(--s2)}
-.pchg small{font-size:var(--fs-body);font-weight:600}
-.spark{width:100%;height:64px;display:block;margin:var(--s2) 0 0}
-.spark polyline{stroke:var(--blue)}
 .hz{margin:2px 0 4px}
 
 /* стартовый экран */
@@ -712,3 +704,7 @@ select{background:transparent;border:0;color:var(--mut);font-size:var(--fs-body)
 /* несколько кошельков — стопкой, как в Wallet: у верхних видна только полоса с названием */
 .wcard.peek{margin-bottom:-108px;box-shadow:0 -2px 12px var(--lift)}
 @media (min-width:900px){ .panel.blk .tcols{gap:var(--s2)} }
+/* подсказка «как читать диапазон» — один раз, до первого «Понятно» */
+.notice.tip{align-items:center;background:var(--card)}
+.notice.tip>svg{color:var(--blue)}
+.notice.tip .rt{font-size:var(--fs-fine);line-height:1.4}

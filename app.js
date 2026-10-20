@@ -298,12 +298,6 @@ function planChart() {
   return `<svg class="pf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Как менялась сумма в пределах лимита и сколько было в сделке">${bars}${n > 1 ? `<polyline class="pf-line" points="${line}"/>` : ''}${dots}${vals}${labels}</svg>
     <div class="legend"><span><i class="lg lg-line"></i>сумма в пределах лимита</span><span><i class="lg lg-bar"></i>было в сделке</span>${S.alertOn ? '<span><i class="lg lg-al"></i>после оповещения</span>' : ''}</div>`;
 }
-/* цена за 30 дней — маленький график под ценой (в RN — react-native-svg) */
-function sparkSVG() {
-  const W = 300, H = 64, lo = Math.min(...CLOSES), hi = Math.max(...CLOSES);
-  const pts = CLOSES.map((v, i) => `${(W * i / (CLOSES.length - 1)).toFixed(1)},${(4 + (H - 8) * (hi - v) / (hi - lo)).toFixed(1)}`).join(' ');
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Цена BTC за 30 дней"><polyline points="${pts}" fill="none" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
-}
 
 /* ---------- компоненты (каждый потом станет компонентом React Native) ---------- */
 const chev = `<span class="chev">${ico('chev')}</span>`;
@@ -347,9 +341,9 @@ function heroBlock(c, key) {
   return `${lbl}${sw(key, c.sum, usd(c.sum), 'hero num')}<p class="cap num">${capText()}</p>${was}`;
 }
 const trio = () => { const m = M(); return `<div class="trio num">
-  <div><b class="dn">${m.tails[0]}%</b><small>упадёт больше 5%</small></div>
+  <div><b>${m.tails[0]}%</b><small>упадёт больше 5%</small></div>
   <div><b>${m.tails[1]}%</b><small>в пределах ±5%</small></div>
-  <div><b class="up">${m.tails[2]}%</b><small>вырастет больше 5%</small></div></div>`; };
+  <div><b>${m.tails[2]}%</b><small>вырастет больше 5%</small></div></div>`; };
 const fgMeter = v => `<span class="fgv"><span class="fgn num">${v}</span><span class="fgl">${fgLabel(v)}</span></span>
   <span class="fgbar"><i style="left:${v}%"></i></span><span class="fgs"><small>страх</small><small>жадность</small></span>`;
 const fgCard = () => `<button class="card fg press" data-sheet="fg"><span class="fgh"><b>Индекс страха и жадности</b>${chev}</span>${fgMeter(M().fg)}</button>`;
@@ -426,45 +420,44 @@ function vHome() {
     : S.wallets.length ? S.wallets.map((w, i, a) => wcard(w, i < a.length - 1)).join('')
     : `<button class="wcard w-empty press" data-sheet="addwallet"><span class="wtop"><span class="wic">${ico('plus')}</span><b>Добавьте кошелёк</b></span><span class="wsub">Только просмотр: введите баланс сами или подключите биржу на чтение</span></button>`;
   const acts = S.sandbox
-    ? [qa('calc', 'Посчитать', 'data-go="sum"'), qa('cal', 'Итог', modeJ().some(j => j.pending) ? 'data-act="sandff"' : 'data-go="digest"'), qa('sync', 'Сбросить', 'data-act="sandreset"'), qa('wallet', 'Реальный', 'data-act="sandtog"')]
-    : [qa('plus', 'Добавить', 'data-sheet="addwallet"'), qa('calc', 'Посчитать', 'data-go="sum"'), qa('spark', 'Без денег', 'data-act="sandtog"'), qa('swap', 'Биржа', 'data-act="toex"')];
+    ? [qa('cal', 'Итог', modeJ().some(j => j.pending) ? 'data-act="sandff"' : 'data-go="digest"'), qa('book', 'Журнал', 'data-go="journal"'), qa('wallet', 'Реальный', 'data-act="sandtog"')]
+    : [qa('plus', 'Добавить', 'data-sheet="addwallet"'), qa('spark', 'Без денег', 'data-act="sandtog"'), qa('swap', 'Биржа', 'data-act="toex"')];
   /* главная по блокам: деньги → на эту неделю → с чего начать → что изменилось → новости.
      Одна крупная цифра — баланс; сумма в пределах лимита — заметная, но вторая по размеру. */
-  return `<div class="hide-m">${topbar('Главная', todayLong(), `<div class="tbr">${sandTag()}${ava()}</div>`)}</div>
-  <div class="phonebar hide-d"><span class="pbd">${todayLong()}</span><div class="tbr">${sandTag()}${ava()}</div></div>
+  return `<div class="hide-m">${topbar('Главная', todayLong(), `<div class="tbr">${ava()}</div>`)}</div>
+  <div class="phonebar hide-d"><span class="pbd">${todayLong()}</span><div class="tbr">${ava()}</div></div>
   <div class="cols secs">
     <section class="stackv secs main-col">
-      ${block(S.sandbox ? 'Песочница' : 'Деньги', `<div class="wstack">${cards}</div>
+      ${block('Деньги', `<div class="wstack">${cards}</div>
         ${!S.sandbox && S.wallets.length > 1 ? `<p class="fine wtot">Всего для расчёта: <b class="num">${usd(walletsTotal())}</b></p>` : ''}
         ${grp([priceRow()])}
-        <div class="qas">${acts.join('')}</div>`, `<small>${S.sandbox ? 'виртуальные деньги' : 'только просмотр'}</small>`)}
+        <div class="qas">${acts.join('')}</div>`, S.sandbox ? '' : '<small>только просмотр</small>')}
       ${block('На эту неделю', coreCard(), `<small>${dShort(0)} – ${dShort(7)} · по модели</small>`)}
     </section>
     <section class="stackv secs">
       ${coach()}
       ${items.length ? block('Что изменилось', grp(items)) : ''}
-      ${block('Новости', grp(NEWS.slice(0, 3).map(newsRow)), plink('Все', 'data-go="market"'))}
+      ${block('Новости', grp(NEWS.slice(0, 3).map(newsRow)), plink('Все', 'data-sheet="allnews"'))}
     </section>
   </div>`;
 }
 
 function vMarket() {
-  const m = M(), F = FACTORS(), cur = F[S.fseg] ? S.fseg : 'down', f = fresh();
+  const m = M(), F = FACTORS(), f = fresh();
   const draw = !fanDrawn; fanDrawn = true;
-  const list = F[cur].map(x => row({ tile:x.icon, cls:x.cls, title:x.t, sub:`${x.s}<br>${x.src}${x.at ? ' · ' + x.at : ''}`, right: x.p ? dots(x.p) : '', attrs:`data-factor="${x.id}"` }));
+  /* факторы одним списком: у каждого метка, повышает он риск, снижает или вне модели (§8.6) */
+  const FL = [...F.down.map(x => [x, 'повышает риск', 't-or']), ...F.up.map(x => [x, 'снижает риск', 't-gr']), ...F.unk.map(x => [x, 'вне модели', 't-gy'])];
+  const list = FL.map(([x, d, c]) => row({ tile:x.icon, cls:x.cls, title:x.t, sub:`${mini(d, c)}${x.s}<br>${x.src}${x.at ? ' · ' + x.at : ''}`, right: x.p ? dots(x.p) : '', attrs:`data-factor="${x.id}"` }));
+  /* одноразовая подсказка при первом показе диапазона (§8.2): вероятность — не прогноз */
+  const tip = S.rangeTip ? '' : `<div class="notice tip">${ico('info')}<span class="rt"><b>Как это читать.</b> Это не прогноз, а доля из 20 000 смоделированных недель. Широкий диапазон — модель не уверена. Пропустить неделю — нормальное решение.</span><button class="btn inl press" data-act="rangetip">Понятно</button></div>`;
   const coins = `<div class="chips coins">${chipB(`${ico('btc')}BTC`, 'aria-pressed="true"', 'on')}${chipB('ETH <small>скоро</small>', 'data-act="soon"')}${chipB('SOL <small>скоро</small>', 'data-act="soon"')}</div>`;
   return `${topbar('Рынок', `<span data-ago>${ago()}</span>`, `<div class="tbr">${sandTag()}${ava()}</div>`)}
   ${coins}
   <div class="cols">
     <section class="stackv main-col">
       ${sec('Цена и прогноз')}
-      <section class="card pricecard">
-        <span class="pch"><span class="cat c-btc">${ico('btc')}</span><span class="rt"><b>Биткоин</b><small>цена в долларах</small></span></span>
-        <span class="pbig num" data-live="price">${usd(LIVE)}</span>
-        <span class="pchg num">${liveChg(' за сутки')}</span>
-        ${sparkSVG()}
-        <span class="fine">30 дней · демо-данные</span>
-      </section>
+      ${grp([priceRow()])}
+      ${tip}
       <section class="card scencard">
         ${S.noSignal ? `<div class="notice">${ico('info')}<span><b>Модель сейчас молчит.</b> Данные с бирж пришли не полностью. Ниже — последний расчёт от вчера.</span></div>` : ''}
         <div class="lbl2">Где может быть цена через неделю ${hint('range')}</div>
@@ -480,30 +473,23 @@ function vMarket() {
     <section class="stackv">
       ${sec('Риск на неделю')}
       ${grp([
-        row({ title:`Сильное падение ${hint('bad')}`, sub:'столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(m.bad)}`, vc:'dn' }),
+        row({ title:`Сильное падение ${hint('bad')}`, sub:'столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(m.bad)}` }),
         row({ title:'Состояние рынка', val:regime(), attrs:'data-sheet="regime"' }),
         row({ title:'Индекс страха и жадности', sub:'настроение рынка, в расчёт не входит', val:`${m.fg} · ${fgLabel(m.fg)}`, attrs:'data-sheet="fg"' }),
         row({ title:'Данные и модель', val:`<i class="fd ${f.c}"></i>${f.t}`, attrs:'data-sheet="data"' }),
       ])}
-      ${sec('Что повышает и снижает риск')}
-      ${seg('fseg', cur, [['down', `Повышают · ${F.down.length}`], ['up', `Снижают · ${F.up.length}`], ['unk', `Вне модели · ${F.unk.length}`]])}
+      ${sec('Что влияет на риск')}
       ${grp(list)}
       <p class="fine">Это вклад в расчёт модели, а не причина движения цены.</p>
       ${sec('Что изменит картину')}
       ${grp([...CHANGERS().map(x => row({ title:x.t, sub:x.s, attrs:`data-changer="${x.id}"` })), row({ title:'Расчёт действует до', val:`${dShort(7)}, 09:30` })])}
       ${grp([
-        row({ title:'Что если…', sub:'гипотетические сценарии', right:'<span class="pro">подписка</span>', attrs:'data-sheet="whatif"' }),
+        row({ title:'Что если…', sub:'гипотетические сценарии', attrs:'data-sheet="whatif"' }),
         row({ title:'Архив и точность модели', sub:'10 из 12 недель в диапазоне · промахи не удаляем', attrs:'data-go="archive"' }),
       ])}
     </section>
   </div>
-  <div class="cols">
-    ${panel('20 крупнейших монет', `<div class="tcols">${grp(TOKENS.slice(0, 10).map(tokenRow))}${grp(TOKENS.slice(10).map((t, i) => tokenRow(t, i + 10)))}</div>`, 'blk main-col', '<small>цена · за сутки · демо</small>')}
-    <div class="stackv">
-      ${block('Новости простыми словами', grp(NEWS.map(newsRow)), '<small>демо</small>')}
-      ${fgCard()}
-    </div>
-  </div>`;
+  ${grp([row({ glyph:'chart', title:'20 крупнейших монет', sub:'цена и изменение за сутки', attrs:'data-sheet="tokens"' })], 'more-coins')}`;
 }
 
 function hypBlock() {
@@ -544,7 +530,7 @@ function breakdown(c) {
   const rows = [
     row({ title:S.sandbox ? 'Виртуальный баланс' : 'Баланс', sub:S.sandbox ? 'песочница, без настоящих денег' : S.wallets.length ? 'из ваших кошельков' : 'вы ввели', val:usd(S.capital) }),
     row({ title:`Готовы потерять за неделю ${hint('limit')}`, sub:`${limPct()}${S.limitAuto ? ', по умолчанию' : ', задано вами'}`, val:usd(S.limit) }),
-    row({ title:`Сильное падение сейчас ${hint('bad')}`, sub:'по модели: столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(c.base)}`, vc:'dn' }),
+    row({ title:`Сильное падение сейчас ${hint('bad')}`, sub:'по модели: столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(c.base)}` }),
   ];
   if (c.stopD) rows.push(row({ title:`Продадите при ${usd(num(S.stop))}`, sub:'падение для расчёта не больше этого', val:`−${pct1(c.stopD)}` }));
   if (c.costRate) rows.push(row({ title:'Комиссии и разница цены', sub:'на вход и выход', val:`+${pct1(c.costRate)}` }));
@@ -606,9 +592,6 @@ function vDigest() {
     </section><section class="stackv"></section></div>`;
   const r = j.result, lim = j.limit || S.limit, held = r.amt > 0, al = activeAlerts();
   const head = held ? (j.limitOk ? 'В пределах лимита' : 'Больше лимита') : 'Неделя без сделки';
-  const text = held
-    ? `Вы держали ${usd(r.amt)} в биткоине. В худший момент недели это было ${sgn(-r.worst)}, к концу недели ${sgn(r.end)}. Ваш лимит — ${usd(lim)}.`
-    : `Вы не держали биткоин. Если бы держали ${usd(r.hypo)}, в худший момент было бы ${sgn(-r.worst)}, к концу недели ${sgn(r.end)}.`;
   const tags = `${j.sand ? ' · песочница' : ''}${j.demo ? ' · пример' : ''}`;
   return `${navbar('Итоги недели', 'home', `${j.demo ? `неделя после ${j.date}` : WEEK.label()}${tags}`)}
   <div class="cols">
@@ -616,8 +599,7 @@ function vDigest() {
       <div class="card herocard glow">
         <div class="lbl2">Как сыграло ваше решение</div>
         <div class="hero2 ${held ? (j.limitOk ? 'up' : 'dn') : ''}">${head}</div>
-        <p class="cap num">${text}</p>
-        ${held && j.limitOk ? '<p class="was">Плохая неделя уложилась в вашу границу.</p>' : ''}
+        <p class="cap num">${held ? `${usd(r.amt)} в биткоине · лимит ${usd(lim)}` : 'вы не держали биткоин'}</p>
         ${btn('Посчитать следующую неделю', 'data-go="sum"', 'w pill')}
       </div>
       ${panel('Цифры недели', grp([
@@ -629,12 +611,7 @@ function vDigest() {
       <p class="fine c">${DISC}</p>
     </section>
     <section class="stackv">
-      ${panel('Что было с ценой', grp([
-        row({ title:'В начале недели', val:usd(WEEK.from) }),
-        row({ title:'Самая низкая', val:`${usd(WEEK.low)} · −${pct1(WEEK.worst)}` }),
-        row({ title:'Сейчас', val:`${usd(WEEK.to)} · +${pct1(WEEK.chg)}` }),
-        row({ title:`Диапазон модели ${hint('range')}`, sub:`${usd(WEEK.lo)} – ${usd(WEEK.hi)}`, val:'цена внутри', vc:'up' }),
-      ]))}
+      ${panel('Что было с ценой', grp([row({ title:'Диапазон модели', sub:`${usd(WEEK.lo)} – ${usd(WEEK.hi)}`, val:'цена внутри', attrs:'data-sheet="weekprice"' })]))}
       ${al.length ? panel('Оповещения за неделю', grp(al.map(a => row({ tile:a.icon, cls:a.cls, title:a.title, sub:a.means, attrs:`data-alert="${a.id}"` })))) : ''}
       ${S.sandbox ? '' : panel('Как менялась сумма', `<div class="card chartcard">${planChart()}</div>`)}
     </section>
@@ -671,7 +648,7 @@ function vJournal() {
       <p class="fine">Записи песочницы и примера помечены и не попадают в график и статистику.</p>
     </section>
     <section class="stackv">
-      ${panel('Как менялась сумма', `<div class="card chartcard">${planChart()}</div>`)}
+      ${realJ().length ? panel('Как менялась сумма', `<div class="card chartcard">${planChart()}</div>`) : ''}
       ${grp([row({ glyph:'cal', title:'Итоги недели', sub:WEEK.label(), attrs:'data-go="digest"' }), res.length ? row({ glyph:'shield', title:'Лимит соблюдён', sub:'недели, когда потеря укладывалась в лимит', val:`${okN} из ${res.length}` }) : '', row({ glyph:'pie', title:'Точность модели', sub:'архив прогнозов', attrs:'data-go="archive"' })])}
     </section>
   </div>`;
@@ -876,10 +853,12 @@ const SHEETS = {
     return `<span class="tag t-or">${ico(a.icon)}Рынок неспокойный · сегодня</span>
       <h2 class="l">${a.title}</h2>
       ${means(a.means)}
-      ${c.none ? '' : `<div class="money"><small>Сумма в пределах лимита</small><b class="num">${usd(calmSum())} → ${usd(c.sum)}</b></div>`}
-      ${grp(a.kv.map(k => row({ title:k[0], val:k[1] })))}
-      <p class="body">${a.note} ${a.id === 'funding' ? term('lev', 'Что такое плечо?') : term('dvol', 'Что такое размах?')}</p>
-      <p class="fine">Источники: ${a.src}.</p>
+      ${c.none ? '' : `<div class="money"><small>Сумма в пределах лимита</small><b class="num">${usd(calmSum())} → ${usd(c.sum)}</b></div><p class="fine">${DISC}</p>`}
+      <details class="more2"><summary>Подробнее: цифры и источники</summary>
+        ${grp(a.kv.map(k => row({ title:k[0], val:k[1] })))}
+        <p class="body">${a.note} ${a.id === 'funding' ? term('lev', 'Что такое плечо?') : term('dvol', 'Что такое размах?')}</p>
+        <p class="fine">Источники: ${a.src}.</p>
+      </details>
       ${btn('Открыть расчёт', 'data-act="recalc"')}${okBtn()}`; },
   fg() { const v = M().fg;
     return `<h2 class="l">Индекс страха и жадности</h2>
@@ -893,6 +872,14 @@ const SHEETS = {
       ${grp([row({ title:'Что это такое', sub:x.what })])}
       ${means(`Если это случится, ${x.s.replace(/^сейчас \d+ · /, '')}. Сумму в пределах лимита мы пересчитаем сами и сообщим на главной.`)}
       ${okBtn()}`; },
+  tokens() { return `<h2 class="l">20 крупнейших монет</h2><p class="fine">Цена и изменение за сутки · демо. Расчёт суммы пока только для биткоина.</p>${grp(TOKENS.map(tokenRow))}${okBtn('Закрыть')}`; },
+  allnews() { return `<h2 class="l">Новости простыми словами</h2>${grp(NEWS.map(newsRow))}<p class="fine">Демо-лента: заголовки условные.</p>${okBtn('Закрыть')}`; },
+  weekprice() { return `<h2 class="l">Что было с ценой за неделю</h2>${grp([
+      row({ title:'В начале недели', val:usd(WEEK.from) }),
+      row({ title:'Самая низкая', val:`${usd(WEEK.low)} · −${pct1(WEEK.worst)}` }),
+      row({ title:'Сейчас', val:`${usd(WEEK.to)} · +${pct1(WEEK.chg)}` }),
+      row({ title:'Диапазон модели', sub:'8 сценариев из 10', val:`${usd(WEEK.lo)} – ${usd(WEEK.hi)}` }),
+    ])}${means('Цена осталась внутри диапазона модели. Так бывает примерно в 8 неделях из 10 — промахи мы тоже показываем в архиве.')}${okBtn()}`; },
   news(i) { const n = NEWS[i];
     return `<span class="tag t-gy">${n.tag} · ${n.ago}</span><h2 class="l">${n.t}</h2>${means(n.means)}<p class="fine">Демо-лента: заголовок условный.</p>${okBtn()}`; },
   coin(i) { const t = TOKENS[i], btc = t.s === 'BTC';
@@ -1560,6 +1547,7 @@ document.addEventListener('click', e => {
       save(); render(); return toast(n ? 'Прошла неделя (демо): посмотрите, как сыграли решения' : 'Нет решений, которые ждут итога');
     }
     case 'testbanner': return alertBanner();
+    case 'rangetip': S.rangeTip = true; save(); return render();
     case 'soon': return toast('Скоро. Пока модель проверена только на биткоине и сроке 7 дней');
     case 'reset': try { localStorage.removeItem(KEY); } catch (e) {} S = DEFAULT(); closeSheet(); fanDrawn = false; history.replaceState(null, '', location.pathname); Object.keys(shown).forEach(k => delete shown[k]); try { sessionStorage.removeItem('ca-intro'); } catch (e) {} render(); return runIntro();
     case 'voice': return openSheet('voice');
