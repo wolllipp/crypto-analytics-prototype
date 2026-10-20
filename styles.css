@@ -678,3 +678,37 @@ select{background:transparent;border:0;color:var(--mut);font-size:var(--fs-body)
   .how>.fine{padding:0 4px}
 }
 @media (max-width:899px){ .tcols>.grp:last-child{border-top:.5px solid var(--line)} }
+
+/* ---------- иерархия 21.10: заголовки разделов и отступы ----------
+   Шкала: крупный заголовок экрана 28/32 → заголовок раздела 20/700 → строка 15/600 → подпись 13.
+   Ритм: внутри блока 8–10px, между блоками 28px, заголовок к содержимому 10px. */
+:root{--fs-sec:20px; --gap-sec:28px; --gap-in:10px}
+.sec{font-size:var(--fs-sec);font-weight:700;color:var(--fg);letter-spacing:-.02em;line-height:1.2;padding:var(--s5) 4px 2px}
+.plink{font-size:var(--fs-body);font-weight:600;color:var(--blue);min-height:44px;padding:0 4px;display:flex;align-items:center;flex:none}
+.secs{gap:var(--gap-sec)}
+.wblock{display:flex;flex-direction:column;gap:var(--gap-in)}
+.panel.blk{gap:var(--gap-in)}
+.panel.blk .ph{align-items:center;padding:0 4px;min-height:28px}
+.panel.blk .ph h3{font-size:var(--fs-sec);font-weight:700;color:var(--fg);letter-spacing:-.02em;line-height:1.2}
+.panel.blk .ph small{font-size:var(--fs-fine)}
+.pbd{font-size:var(--fs-body);font-weight:600;color:var(--mut)}
+/* на главной сумма — вторая по размеру после баланса */
+.core .hero{font-size:52px}
+.herocard.core{padding:24px 20px 22px}
+.core .pill{margin-top:var(--s3)}
+@media (min-width:900px){
+  .panel.blk{background:none;border-radius:0;padding:0}
+  .panel.blk .grp{background:var(--card);border-radius:var(--r-lg)}
+  .core .hero{font-size:64px}
+  .cols.secs{align-items:flex-start}
+}
+@media (max-width:899px){
+  .panel .ph h3{font-size:var(--fs-sec);font-weight:700;color:var(--fg);letter-spacing:-.02em}
+  .panel .ph{padding-top:var(--s5)}
+  .panel.blk .ph{padding-top:0}
+  .cols.secs{gap:var(--gap-sec)}
+  .phonebar{min-height:44px;margin-bottom:var(--s3)}
+}
+/* несколько кошельков — стопкой, как в Wallet: у верхних видна только полоса с названием */
+.wcard.peek{margin-bottom:-108px;box-shadow:0 -2px 12px var(--lift)}
+@media (min-width:900px){ .panel.blk .tcols{gap:var(--s2)} }

@@ -319,6 +319,9 @@ const grp = (rows, cls = '') => { const r = rows.filter(Boolean), ind = s => /cl
 const sec = t => `<h3 class="sec">${t}</h3>`;
 /* панель: заголовок + содержимое; на десктопе — карточка, на телефоне — секция с заголовком */
 const panel = (title, body, cls = '', right = '') => `<section class="panel ${cls}"><div class="ph"><h3>${title}</h3>${right}</div>${body}</section>`;
+/* блок экрана: крупный заголовок раздела, справа подпись или ссылка; содержимое — отдельной карточкой */
+const block = (title, body, right = '') => panel(title, body, 'blk', right);
+const plink = (t, attrs) => `<button class="plink press" ${attrs}>${t}</button>`;
 const btn = (label, attrs = '', kind = 'w') => `<button class="btn ${kind} press" ${attrs}>${label}</button>`;
 const seg = (name, cur, opts) => `<div class="seg" role="tablist">${opts.map(([k, t]) => `<button class="${cur === k ? 'on' : ''}" role="tab" aria-selected="${cur === k}" data-seg="${name}:${k}">${t}</button>`).join('')}</div>`;
 const toggle = (attrs, on, label, dis) => `<button class="toggle" role="switch" aria-checked="${!!on}" ${attrs} aria-label="${label}" ${dis ? 'disabled' : ''}></button>`;
@@ -344,9 +347,9 @@ function heroBlock(c, key) {
   return `${lbl}${sw(key, c.sum, usd(c.sum), 'hero num')}<p class="cap num">${capText()}</p>${was}`;
 }
 const trio = () => { const m = M(); return `<div class="trio num">
-  <div><b class="dn">${m.tails[0]}%</b><small>упадёт больше чем на 5%</small></div>
-  <div><b>${m.tails[1]}%</b><small>изменится не больше чем на 5%</small></div>
-  <div><b class="up">${m.tails[2]}%</b><small>вырастет больше чем на 5%</small></div></div>`; };
+  <div><b class="dn">${m.tails[0]}%</b><small>упадёт больше 5%</small></div>
+  <div><b>${m.tails[1]}%</b><small>в пределах ±5%</small></div>
+  <div><b class="up">${m.tails[2]}%</b><small>вырастет больше 5%</small></div></div>`; };
 const fgMeter = v => `<span class="fgv"><span class="fgn num">${v}</span><span class="fgl">${fgLabel(v)}</span></span>
   <span class="fgbar"><i style="left:${v}%"></i></span><span class="fgs"><small>страх</small><small>жадность</small></span>`;
 const fgCard = () => `<button class="card fg press" data-sheet="fg"><span class="fgh"><b>Индекс страха и жадности</b>${chev}</span>${fgMeter(M().fg)}</button>`;
@@ -358,11 +361,11 @@ const priceRow = () => row({ tile:'btc', cls:'c-btc', title:'Биткоин', su
 
 /* карточка кошелька — как в Wallet: градиент по источнику, крупный баланс, источник; только просмотр */
 const WKIND = { manual:['wallet','введён вручную'], exchange:['lock','биржа · только чтение'], address:['btc','адрес · только чтение'], sand:['spark','виртуальные деньги'] };
-function wcard(w) {
+function wcard(w, peek) {
   const [ic, kind] = WKIND[w.kind], d = w.kind === 'sand' ? S.capital - SAND_CAP : 0;
   const sub = w.kind === 'sand' ? (d ? `${sgn(d)} с начала · без настоящих денег` : 'без настоящих денег · те же расчёты')
     : w.kind === 'exchange' ? `<span data-ago>${ago()}</span>` : w.kind === 'address' ? `${String(w.btc).replace('.', ',')} BTC по цене сейчас` : 'для расчёта суммы';
-  return `<button class="wcard w-${w.kind} press" data-wallet="${w.id}" aria-label="${w.name}: ${usd(w.bal)}, ${kind}">
+  return `<button class="wcard w-${w.kind}${peek ? ' peek' : ''} press" data-wallet="${w.id}" aria-label="${w.name}: ${usd(w.bal)}, ${kind}">
     <span class="wtop"><span class="wic">${ico(ic)}</span><b>${w.name}</b><span class="wkind">${kind}</span></span>
     ${sw('w' + w.id, w.bal, usd(w.bal), 'wbal num')}
     <span class="wsub">${sub}</span></button>`;
@@ -393,9 +396,9 @@ function coach() {
   if (S.demo || steps.every(s => s[1])) return '';
   const next = steps.findIndex(s => !s[1]), done = steps.filter(s => s[1]).length;
   const dot = (i, ok, cur) => `<span class="stp${ok ? ' ok' : ''}${cur ? ' cur' : ''}">${ok ? ico('check') : i + 1}</span>`;
-  return panel('С чего начать', grp(steps.map(([t, ok, a, s], i) => i === next
+  return block('С чего начать', grp(steps.map(([t, ok, a, s], i) => i === next
     ? row({ lead:dot(i, ok, true), title:t, sub:s, attrs:a, extra:'next' })
-    : row({ lead:dot(i, ok), title:t, extra:ok ? 'done' : 'todo' }))), 'coach', `<small>${done} из 4</small>`);
+    : row({ lead:dot(i, ok), title:t, extra:ok ? 'done' : 'todo' })), 'coach'), `<small>${done} из 4</small>`);
 }
 function feedItems() {
   const items = [], J = modeJ();
@@ -420,25 +423,27 @@ function coreCard() {
 function vHome() {
   const items = feedItems();
   const cards = S.sandbox ? wcard({ id:'sand', kind:'sand', name:'Песочница', bal:S.capital })
-    : S.wallets.length ? S.wallets.map(wcard).join('')
+    : S.wallets.length ? S.wallets.map((w, i, a) => wcard(w, i < a.length - 1)).join('')
     : `<button class="wcard w-empty press" data-sheet="addwallet"><span class="wtop"><span class="wic">${ico('plus')}</span><b>Добавьте кошелёк</b></span><span class="wsub">Только просмотр: введите баланс сами или подключите биржу на чтение</span></button>`;
   const acts = S.sandbox
     ? [qa('calc', 'Посчитать', 'data-go="sum"'), qa('cal', 'Итог', modeJ().some(j => j.pending) ? 'data-act="sandff"' : 'data-go="digest"'), qa('sync', 'Сбросить', 'data-act="sandreset"'), qa('wallet', 'Реальный', 'data-act="sandtog"')]
     : [qa('plus', 'Добавить', 'data-sheet="addwallet"'), qa('calc', 'Посчитать', 'data-go="sum"'), qa('spark', 'Без денег', 'data-act="sandtog"'), qa('swap', 'Биржа', 'data-act="toex"')];
-  return `${topbar('Главная', todayLong(), `<div class="tbr">${sandTag()}${ava()}</div>`)}
-  <div class="cols">
-    <section class="stackv main-col">
-      <div class="wstack">${cards}</div>
-      ${!S.sandbox && S.wallets.length > 1 ? `<p class="fine wtot">Всего для расчёта: <b class="num">${usd(walletsTotal())}</b></p>` : ''}
-      ${grp([priceRow()])}
-      <div class="qas">${acts.join('')}</div>
-      ${coreCard()}
+  /* главная по блокам: деньги → на эту неделю → с чего начать → что изменилось → новости.
+     Одна крупная цифра — баланс; сумма в пределах лимита — заметная, но вторая по размеру. */
+  return `<div class="hide-m">${topbar('Главная', todayLong(), `<div class="tbr">${sandTag()}${ava()}</div>`)}</div>
+  <div class="phonebar hide-d"><span class="pbd">${todayLong()}</span><div class="tbr">${sandTag()}${ava()}</div></div>
+  <div class="cols secs">
+    <section class="stackv secs main-col">
+      ${block(S.sandbox ? 'Песочница' : 'Деньги', `<div class="wstack">${cards}</div>
+        ${!S.sandbox && S.wallets.length > 1 ? `<p class="fine wtot">Всего для расчёта: <b class="num">${usd(walletsTotal())}</b></p>` : ''}
+        ${grp([priceRow()])}
+        <div class="qas">${acts.join('')}</div>`, `<small>${S.sandbox ? 'виртуальные деньги' : 'только просмотр'}</small>`)}
+      ${block('На эту неделю', coreCard(), `<small>${dShort(0)} – ${dShort(7)} · по модели</small>`)}
     </section>
-    <section class="stackv">
+    <section class="stackv secs">
       ${coach()}
-      ${items.length ? panel('Что изменилось', grp(items)) : ''}
-      ${panel('Новости простыми словами', grp(NEWS.slice(0, 3).map(newsRow)), '', '<small>демо</small>')}
-      ${grp([row({ glyph:'chart', title:'Рынок и прогнозы', sub:'диапазон на неделю, 20 монет, все новости', attrs:'data-go="market"' })])}
+      ${items.length ? block('Что изменилось', grp(items)) : ''}
+      ${block('Новости', grp(NEWS.slice(0, 3).map(newsRow)), plink('Все', 'data-go="market"'))}
     </section>
   </div>`;
 }
@@ -452,6 +457,7 @@ function vMarket() {
   ${coins}
   <div class="cols">
     <section class="stackv main-col">
+      ${sec('Цена и прогноз')}
       <section class="card pricecard">
         <span class="pch"><span class="cat c-btc">${ico('btc')}</span><span class="rt"><b>Биткоин</b><small>цена в долларах</small></span></span>
         <span class="pbig num" data-live="price">${usd(LIVE)}</span>
@@ -472,6 +478,7 @@ function vMarket() {
       </section>
     </section>
     <section class="stackv">
+      ${sec('Риск на неделю')}
       ${grp([
         row({ title:`Сильное падение ${hint('bad')}`, sub:'столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(m.bad)}`, vc:'dn' }),
         row({ title:'Состояние рынка', val:regime(), attrs:'data-sheet="regime"' }),
@@ -491,9 +498,9 @@ function vMarket() {
     </section>
   </div>
   <div class="cols">
-    ${panel('20 крупнейших монет', `<div class="tcols">${grp(TOKENS.slice(0, 10).map(tokenRow))}${grp(TOKENS.slice(10).map((t, i) => tokenRow(t, i + 10)))}</div>`, 'main-col', '<small>цена · за сутки · демо</small>')}
+    ${panel('20 крупнейших монет', `<div class="tcols">${grp(TOKENS.slice(0, 10).map(tokenRow))}${grp(TOKENS.slice(10).map((t, i) => tokenRow(t, i + 10)))}</div>`, 'blk main-col', '<small>цена · за сутки · демо</small>')}
     <div class="stackv">
-      ${panel('Новости простыми словами', grp(NEWS.map(newsRow)), '', '<small>демо</small>')}
+      ${block('Новости простыми словами', grp(NEWS.map(newsRow)), '<small>демо</small>')}
       ${fgCard()}
     </div>
   </div>`;
