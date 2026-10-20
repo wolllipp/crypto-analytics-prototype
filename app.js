@@ -1399,15 +1399,23 @@ function renderView(nav) {
   const view = document.getElementById('view');
   const f = document.activeElement, key = f && f.dataset && f.dataset.in, caret = key && f.selectionStart, raw = key && f.value;
   if (nav) fanK = M().k;
-  view.innerHTML = `<div class="${nav === 'push' ? 'push' : nav === 'pop' ? 'pop' : nav === 'tab' ? 'fadein' : ''}">${viewHTML()}</div>`;
+  const stag = nav === 'tab' && !reduce();
+  view.innerHTML = `<div class="${nav === 'push' ? 'push' : nav === 'pop' ? 'pop' : nav === 'tab' && !stag ? 'fadein' : ''}">${viewHTML()}</div>`;
+  if (stag) [...view.querySelectorAll('.tb, .phonebar, .stackv > *, .cols > .card, .jseg, .coins')].filter(el => el.offsetParent !== null).slice(0, 12)
+    .forEach((el, i) => { el.style.setProperty('--i', i); el.classList.add('rise'); });
   swaps(view, !nav);
   if (!nav) morphFan();
   if (key && !sheetType) { const el = view.querySelector(`[data-in="${key}"]`); if (el) { el.value = raw; el.focus({preventScroll:true}); try { el.setSelectionRange(caret, caret); } catch (e) {} } }
   syncChrome();
   if (S.view === 'home' && !S.tourDone && !tourOn && !tourQueued) { tourQueued = true; setTimeout(() => { tourQueued = false; if (S.view === 'home' && !S.tourDone && !tourOn && !sheetType) startTour(); }, 700); }
 }
+const introSeen = () => { try { return !!sessionStorage.getItem('ca-intro'); } catch (e) { return true; } };
+let lastOnb = null;
 function render(opts = {}) {
-  if (S.onb === 'land') { shellOn = false; document.body.classList.remove('docked'); root.innerHTML = vLanding(); return; }
+  if (S.onb === 'land') { shellOn = false; document.body.classList.remove('docked');
+    if (lastOnb !== 'land' && introSeen()) landReveal = true;
+    root.innerHTML = vLanding(); landReveal = false; lastOnb = 'land'; return; }
+  lastOnb = S.onb;
   if (S.onb !== 'done') { shellOn = false; document.body.classList.remove('docked'); root.innerHTML = vOnb(opts.dir); return; }
   if (!shellOn) renderShell();
   renderView(opts.nav);
@@ -1472,7 +1480,7 @@ function finishOnb() {
 function toReal() {
   setSandbox(false);
   if (!S.realReady) { S.onb = 0; S.fromSand = true; S.customCap = false; save(); return render({ dir:'fwd' }); }
-  save(); render(); toast(`Реальный режим · баланс ${usd(S.capital)}`);
+  save(); render({ nav:'tab' }); toast(`Реальный режим · баланс ${usd(S.capital)}`);
 }
 const fieldErr = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
 let exReturn = null;
@@ -1525,8 +1533,8 @@ document.addEventListener('click', e => {
     case 'onbfinish': if (!emailOk(S.email)) { fieldErr('emErr', S.email.trim() ? 'Похоже, в адресе ошибка. Пример: name@mail.by' : 'Введите почту или нажмите «Позже»'); document.getElementById('emBox')?.classList.add('bad'); return; } return finishOnb();
     case 'onblater': S.email = ''; return finishOnb();
     case 'emailsave': if (!emailOk(S.email)) { fieldErr('emErr', S.email.trim() ? 'Похоже, в адресе ошибка. Пример: name@mail.by' : 'Введите почту'); document.getElementById('emBox')?.classList.add('bad'); return; } closeSheet(); save(); render(); return toastSoon('Почта сохранена');
-    case 'sandtog': closeSheet(); if (S.sandbox) return toReal(); setSandbox(true); save(); render(); return toastSoon(`Песочница: виртуальные ${usd(S.capital)}`);
-    case 'sandreset': closeSheet(); S.capital = SAND_CAP; S.limit = autoLim(SAND_CAP); S.limitAuto = true; S.journal = S.journal.filter(j => !j.sand); save(); render(); return toastSoon(`Песочница сброшена: ${usd(SAND_CAP)}`);
+    case 'sandtog': closeSheet(); if (S.sandbox) return toReal(); setSandbox(true); save(); render({ nav:'tab' }); return toastSoon(`Песочница: виртуальные ${usd(S.capital)}`);
+    case 'sandreset': closeSheet(); S.capital = SAND_CAP; S.limit = autoLim(SAND_CAP); S.limitAuto = true; S.journal = S.journal.filter(j => !j.sand); save(); render({ nav:'tab' }); return toastSoon(`Песочница сброшена: ${usd(SAND_CAP)}`);
     /* итог в песочнице сразу — на данных прошлой недели; виртуальный баланс меняется на результат */
     case 'sandff': {
       closeSheet(); const P = S.journal.filter(j => j.sand && j.pending);
@@ -1670,8 +1678,8 @@ function tourStep(i, first) {
   if (i < 0) return;
   tourI = i; const st = tourSteps[i], el = tourTarget(st); if (!el) return tourStep(i + 1);
   const last = i === tourSteps.length - 1;
-  tourTip.innerHTML = `<small class="num">${i + 1} из ${tourSteps.length}</small><b>${st.t}</b><p>${st.d}</p>
-    <div class="tour-btns">${i ? '<button class="btn link press" data-tour="back">Назад</button>' : '<button class="btn link press" data-tour="skip">Пропустить</button>'}<button class="btn w press" data-tour="next">${last ? 'Понятно' : 'Далее'}</button></div>`;
+  tourTip.innerHTML = `<div class="tour-in"><small class="num">${i + 1} из ${tourSteps.length}</small><b>${st.t}</b><p>${st.d}</p>
+    <div class="tour-btns">${i ? '<button class="btn link press" data-tour="back">Назад</button>' : '<button class="btn link press" data-tour="skip">Пропустить</button>'}<button class="btn w press" data-tour="next">${last ? 'Понятно' : 'Далее'}</button></div></div>`;
   const fixed = getComputedStyle(el).position === 'fixed' || el.closest('.dock,.side');
   if (!fixed) el.scrollIntoView({ block:'center', behavior:reduce() ? 'auto' : 'smooth' });
   tourEl.classList.toggle('instant', !!first);
@@ -1697,7 +1705,8 @@ function tourPlace() {
 function endTour() {
   if (!tourOn) return;
   tourOn = false; S.tourDone = true; save();
-  tourEl.classList.remove('on'); document.body.classList.remove('touring');
+  document.body.classList.remove('touring');
+  if (reduce()) tourEl.classList.remove('on'); else { tourEl.classList.add('out'); setTimeout(() => tourEl.classList.remove('on', 'out'), 200); }
   window.scrollTo({ top:0, behavior:reduce() ? 'auto' : 'smooth' });
   toast('Тур можно повторить: Профиль → «Как пользоваться»');
 }
