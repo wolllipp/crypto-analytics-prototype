@@ -726,6 +726,7 @@ function vProfile() {
   return `${navbar('Профиль', 'home')}
   <div class="cols even">
     <section class="stackv">
+      ${sec('Аккаунт')}
       <div class="card acct"><span class="ava big">${initial()}</span><div class="rt"><b>${S.email ? esc(S.email) : 'Без почты'}</b><small>Бесплатный тариф${S.country ? ' · ' + (S.country === 'BY' ? 'Беларусь' : 'другая страна') : ''}</small></div></div>
       ${grp([
         row({ glyph:'wallet', title:S.sandbox ? 'Виртуальный баланс' : 'Баланс для расчёта', sub:S.sandbox ? 'песочница' : S.wallets.length ? `кошельков: ${S.wallets.length}` : 'кошельков пока нет', val:usd(S.capital), attrs:'data-sheet="calc"' }),
@@ -735,6 +736,7 @@ function vProfile() {
         row({ glyph:'user', title:'Почта', sub:'чтобы данные не потерялись', val:S.email ? '' : 'не указана', attrs:'data-sheet="email"' }),
         row({ glyph:'lock', title:'Подключённые биржи', sub:'только чтение', val:S.trades ? '1' : 'нет', attrs:'data-act="totrades"' }),
       ])}
+      ${sec('Приложение')}
       ${grp([
         row({ glyph:'bell', title:'Оповещения', sub:'события, частота, тихие часы', attrs:'data-go="alerts"' }),
         row({ glyph:'logo', title:'Ассистент', sub:aiLive() ? 'подключён: ' + esc(modelName()) : 'демо-режим', attrs:'data-go="assistant"' }),

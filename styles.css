@@ -798,3 +798,21 @@ body.touring{overflow:hidden}
   .hrow2 .coach .row.next{min-height:56px}
 
 @media (min-width:900px) and (hover:hover) and (pointer:fine){ .tb .qa:hover{background:var(--card-2)} }
+
+/* колонки начинаются с одной линии: у первого заголовка колонки нет отступа сверху (Профиль, Рынок, Расчёт) */
+@media (min-width:900px){ .cols>.stackv>.sec:first-child{padding-top:0} }
+
+/* невысокий экран ноутбука (Mac с вкладками и Dock — около 650px видимой высоты): главная всё ещё без прокрутки */
+@media (min-width:900px) and (max-height:760px){
+  .shell:has(.home) .main{padding-top:12px;padding-bottom:12px}
+  .shell:has(.home) .tb{min-height:44px;margin-bottom:var(--s2)}
+  .shell:has(.home) .tbs{display:none}
+  .home{gap:var(--s4)}
+  .home .panel.blk{gap:var(--s2)}
+  .home .herocard.core{padding:16px 24px 14px;gap:4px}
+  .home .core .hero{font-size:52px}
+  .home .core .pill{height:44px;margin-top:4px}
+  .hrow .wcard.peek{margin-bottom:-104px}
+  .hrow2 .row{min-height:42px;padding-top:5px;padding-bottom:5px}
+  .hrow2 .coach .row.next{min-height:50px}
+}
