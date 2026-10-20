@@ -419,7 +419,7 @@ function coreCard() {
     <p class="fine c disc">${DISC}</p></section>`;
 }
 function vHome() {
-  const items = feedItems();
+  const items = feedItems(), todo = coach() + (items.length ? block('Что изменилось', grp(items)) : '');
   const cards = S.sandbox ? wcard({ id:'sand', kind:'sand', name:'Песочница', bal:S.capital })
     : S.wallets.length ? S.wallets.map((w, i, a) => wcard(w, i < a.length - 1)).join('')
     : `<button class="wcard w-empty press" data-sheet="addwallet"><span class="wtop"><span class="wic">${ico('plus')}</span><b>Добавьте кошелёк</b></span><span class="wsub">Только просмотр: введите баланс сами или подключите биржу на чтение</span>${wfoot()}</button>`;
@@ -427,21 +427,25 @@ function vHome() {
     ? [qa('cal', 'Итог', modeJ().some(j => j.pending) ? 'data-act="sandff"' : 'data-go="digest"'), qa('book', 'Журнал', 'data-go="journal"'), qa('wallet', 'Реальный', 'data-act="sandtog"')]
     : [qa('plus', 'Добавить', 'data-sheet="addwallet"'), qa('spark', 'Демо', 'data-act="sandtog"'), qa('swap', 'Биржа', 'data-act="toex"')];
   /* главная по блокам: деньги → на эту неделю → с чего начать → что изменилось → новости.
-     Одна крупная цифра — баланс; сумма в пределах лимита — заметная, но вторая по размеру. */
+     Одна крупная цифра — баланс; сумма в пределах лимита — заметная, но вторая по размеру.
+     На десктопе — два ряда по Z-схеме чтения: сверху рядом обе цифры (баланс слева, сумма недели справа) — видны без прокрутки;
+     ниже слева то, что требует действия (шаги, изменения), справа — новости. На телефоне порядок тот же, одной колонкой. */
   return `<div class="hide-m">${topbar('Главная', todayLong(), `<div class="tbr">${ava()}</div>`)}</div>
   <div class="phonebar hide-d"><span class="pbd">${todayLong()}</span><div class="tbr">${ava()}</div></div>
-  <div class="cols secs">
-    <section class="stackv secs main-col">
+  <div class="stackv secs home">
+    <div class="cols even hrow">
       ${block('Деньги', `<div class="wstack">${cards}</div>
         ${!S.sandbox && S.wallets.length > 1 ? `<p class="fine wtot">Всего для расчёта: <b class="num">${usd(walletsTotal())}</b></p>` : ''}
         <div class="qas">${acts.join('')}</div>`, S.sandbox ? '' : '<small>только просмотр</small>')}
       ${block('На эту неделю', coreCard(), `<small>${dShort(0)} – ${dShort(7)} · по модели</small>`)}
-    </section>
-    <section class="stackv secs">
-      ${coach()}
-      ${items.length ? block('Что изменилось', grp(items)) : ''}
-      ${block('Новости', grp(NEWS.slice(0, 3).map(newsRow)), plink('Все', 'data-sheet="allnews"'))}
-    </section>
+    </div>
+    <div class="cols even">
+      ${todo ? `<section class="stackv secs">${todo}</section>` : ''}
+      <section class="stackv secs">
+        ${block('Новости', grp(NEWS.slice(0, 3).map(newsRow)), plink('Все', 'data-sheet="allnews"'))}
+      </section>
+      ${todo ? '' : '<span class="hide-m"></span>'}
+    </div>
   </div>`;
 }
 
@@ -1401,7 +1405,7 @@ function renderView(nav) {
   if (nav) fanK = M().k;
   const stag = nav === 'tab' && !reduce();
   view.innerHTML = `<div class="${nav === 'push' ? 'push' : nav === 'pop' ? 'pop' : nav === 'tab' && !stag ? 'fadein' : ''}">${viewHTML()}</div>`;
-  if (stag) [...view.querySelectorAll('.tb, .phonebar, .stackv > *, .cols > .card, .jseg, .coins')].filter(el => el.offsetParent !== null).slice(0, 12)
+  if (stag) [...view.querySelectorAll('.tb, .phonebar, .stackv > :not(.cols), .cols > .card, .cols > .panel, .jseg, .coins')].filter(el => el.offsetParent !== null).slice(0, 12)
     .forEach((el, i) => { el.style.setProperty('--i', i); el.classList.add('rise'); });
   swaps(view, !nav);
   if (!nav) morphFan();

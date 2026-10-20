@@ -757,3 +757,30 @@ body.touring{overflow:hidden}
   .tour-in{animation:fadein 260ms var(--ease-out) both}
 }
 @keyframes risein{from{opacity:0;transform:translateY(10px)}}
+
+/* ---------- главная на десктопе 21.10: два ряда по Z-схеме ----------
+   Взгляд идёт слева направо сверху: баланс → сумма недели, затем вниз-влево: что требует действия → новости.
+   Обе цифры — в первом экране без прокрутки; ряды одной высоты, края заголовков и карточек на одной линии. */
+.home>.cols{margin-bottom:0}
+@media (min-width:900px){
+  .home{gap:36px}
+  .hrow{align-items:stretch}
+  .hrow>.panel.blk>.card{flex:1}
+  /* левый край заголовков — по краю карточек, без «почти совпадающих» 4px */
+  .home .panel.blk .ph{padding:0}
+  /* ссылка «Все» с целью нажатия 44px не раздвигает шапку — заголовки соседних блоков на одной линии */
+  .home .panel.blk .ph .plink{padding:0;margin:-8px 0}
+  .home .wtot{padding:0}
+  /* кошелёк тянется до высоты карточки недели — низы рядом стоящих карточек совпадают */
+  .hrow .wstack{flex:1}
+  .hrow .wstack>.wcard:last-child{flex:1}
+  .hrow .wfoot{margin-top:auto}
+  /* быстрые действия на десктопе — ряд компактных кнопок под кошельком, а не круги как на телефоне */
+  .home .qas{padding:0;gap:var(--s2)}
+  .home .qa{flex-direction:row;justify-content:center;gap:8px;min-height:44px;padding:0 14px;border-radius:var(--r-pill);background:var(--card);transition:background-color var(--t-fast) ease}
+  .home .qai{width:auto;height:auto;background:none;border-radius:0}
+  .home .qai svg{width:18px;height:18px}
+  .home .qal{font-size:var(--fs-body)}
+  .home .herocard.core{justify-content:center}
+}
+@media (min-width:900px) and (hover:hover) and (pointer:fine){ .home .qa:hover{background:var(--card-2)} }
