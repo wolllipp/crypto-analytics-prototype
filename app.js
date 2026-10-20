@@ -357,13 +357,17 @@ const priceRow = () => row({ tile:'btc', cls:'c-btc', title:'Биткоин', su
 const WKIND = { manual:['wallet','введён вручную'], exchange:['lock','биржа · только чтение'], address:['btc','адрес · только чтение'], sand:['spark','виртуальные деньги'] };
 function wcard(w, peek) {
   const [ic, kind] = WKIND[w.kind], d = w.kind === 'sand' ? S.capital - SAND_CAP : 0;
-  const sub = w.kind === 'sand' ? (d ? `${sgn(d)} с начала · без настоящих денег` : 'без настоящих денег · те же расчёты')
-    : w.kind === 'exchange' ? `<span data-ago>${ago()}</span>` : w.kind === 'address' ? `${String(w.btc).replace('.', ',')} BTC по цене сейчас` : 'для расчёта суммы';
+  const btc = w.btc || w.bal / LIVE, eq = `≈ ${btc.toFixed(4).replace('.', ',')} BTC`;
+  const sub = w.kind === 'sand' ? `${eq} · ${d ? `${sgn(d)} с начала` : 'без настоящих денег'}`
+    : w.kind === 'exchange' ? `${eq} · <span data-ago>${ago()}</span>` : eq;
   return `<button class="wcard w-${w.kind}${peek ? ' peek' : ''} press" data-wallet="${w.id}" aria-label="${w.name}: ${usd(w.bal)}, ${kind}">
     <span class="wtop"><span class="wic">${ico(ic)}</span><b>${w.name}</b><span class="wkind">${kind}</span></span>
     ${sw('w' + w.id, w.bal, usd(w.bal), 'wbal num')}
-    <span class="wsub">${sub}</span></button>`;
+    <span class="wsub num">${sub}</span>
+    ${peek ? '' : wfoot()}</button>`;
 }
+/* низ карточки: цена биткоина и изменение за сутки — то, от чего зависит сумма */
+const wfoot = () => `<span class="wfoot num"><span class="wfp">${ico('btc')}Биткоин <b data-live="price">${usd(LIVE)}</b></span>${liveChg(' за сутки')}</span>`;
 const chipB = (label, attrs = '', cls = '') => `<button class="chip press ${cls}" ${attrs}>${label}</button>`;
 const qa = (icon, label, attrs) => `<button class="qa press" ${attrs}><span class="qai">${ico(icon)}</span><span class="qal">${label}</span></button>`;
 
@@ -418,10 +422,10 @@ function vHome() {
   const items = feedItems();
   const cards = S.sandbox ? wcard({ id:'sand', kind:'sand', name:'Песочница', bal:S.capital })
     : S.wallets.length ? S.wallets.map((w, i, a) => wcard(w, i < a.length - 1)).join('')
-    : `<button class="wcard w-empty press" data-sheet="addwallet"><span class="wtop"><span class="wic">${ico('plus')}</span><b>Добавьте кошелёк</b></span><span class="wsub">Только просмотр: введите баланс сами или подключите биржу на чтение</span></button>`;
+    : `<button class="wcard w-empty press" data-sheet="addwallet"><span class="wtop"><span class="wic">${ico('plus')}</span><b>Добавьте кошелёк</b></span><span class="wsub">Только просмотр: введите баланс сами или подключите биржу на чтение</span>${wfoot()}</button>`;
   const acts = S.sandbox
     ? [qa('cal', 'Итог', modeJ().some(j => j.pending) ? 'data-act="sandff"' : 'data-go="digest"'), qa('book', 'Журнал', 'data-go="journal"'), qa('wallet', 'Реальный', 'data-act="sandtog"')]
-    : [qa('plus', 'Добавить', 'data-sheet="addwallet"'), qa('spark', 'Без денег', 'data-act="sandtog"'), qa('swap', 'Биржа', 'data-act="toex"')];
+    : [qa('plus', 'Добавить', 'data-sheet="addwallet"'), qa('spark', 'Демо', 'data-act="sandtog"'), qa('swap', 'Биржа', 'data-act="toex"')];
   /* главная по блокам: деньги → на эту неделю → с чего начать → что изменилось → новости.
      Одна крупная цифра — баланс; сумма в пределах лимита — заметная, но вторая по размеру. */
   return `<div class="hide-m">${topbar('Главная', todayLong(), `<div class="tbr">${ava()}</div>`)}</div>
@@ -430,7 +434,6 @@ function vHome() {
     <section class="stackv secs main-col">
       ${block('Деньги', `<div class="wstack">${cards}</div>
         ${!S.sandbox && S.wallets.length > 1 ? `<p class="fine wtot">Всего для расчёта: <b class="num">${usd(walletsTotal())}</b></p>` : ''}
-        ${grp([priceRow()])}
         <div class="qas">${acts.join('')}</div>`, S.sandbox ? '' : '<small>только просмотр</small>')}
       ${block('На эту неделю', coreCard(), `<small>${dShort(0)} – ${dShort(7)} · по модели</small>`)}
     </section>
@@ -802,7 +805,7 @@ function vLanding() {
         ${row({ tile:'shield', cls:'c-gr', title:'Ваша граница на неделю', sub:'сумма, при которой плохая неделя обойдётся примерно в выбранный вами лимит' })}
         ${row({ tile:'spark', cls:'c-vi', title:'Тренировка без денег', sub:`виртуальные ${usd(SAND_CAP)}, без регистрации` })}
       </div>
-      <div class="lcta" style="--d:320ms">${btn('Попробовать без денег', 'data-act="sandstart"')}${btn('У меня есть деньги на бирже', 'data-act="login"', 'd')}</div>
+      <div class="lcta" style="--d:320ms">${btn('У меня есть счёт', 'data-act="login"')}${btn('Попробовать демо', 'data-act="sandstart"', 'd')}</div>
       <p class="fine c" style="--d:400ms">Мы не биржа: не храним деньги и не совершаем сделки.</p>
     </div>
   </div>`;
