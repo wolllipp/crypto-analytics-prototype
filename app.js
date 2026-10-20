@@ -439,7 +439,7 @@ function vHome() {
         <div class="qas">${acts.join('')}</div>`, S.sandbox ? '' : '<small>только просмотр</small>')}
       ${block('На эту неделю', coreCard(), `<small>${dShort(0)} – ${dShort(7)} · по модели</small>`)}
     </div>
-    <div class="cols even">
+    <div class="cols even hrow2">
       ${todo ? `<section class="stackv secs">${todo}</section>` : ''}
       <section class="stackv secs">
         ${block('Новости', grp(NEWS.slice(0, 3).map(newsRow)), plink('Все', 'data-sheet="allnews"'))}

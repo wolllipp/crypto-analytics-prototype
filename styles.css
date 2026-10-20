@@ -782,5 +782,7 @@ body.touring{overflow:hidden}
   .home .qai svg{width:18px;height:18px}
   .home .qal{font-size:var(--fs-body)}
   .home .herocard.core{justify-content:center}
+  /* второй ряд уже первого: «Деньги» и «На эту неделю» читаются как главные, ряд ниже — как второстепенный */
+  .hrow2{width:84%;align-self:center}
 }
 @media (min-width:900px) and (hover:hover) and (pointer:fine){ .home .qa:hover{background:var(--card-2)} }
