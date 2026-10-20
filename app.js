@@ -1,62 +1,94 @@
-/* Crypto Analytics — прототип, правки 20.10.2026 по отзывам после показа.
-   Путь: вход (баланс → лимит по умолчанию 6% баланса → страна → три вещи → почта → согласие) →
-   «Сегодня» (одна цифра — сумма в пределах лимита) → «Решение на неделю» (из чего сложилась сумма, 4 действия) →
-   биржа-партнёр или песочница → журнал и итоги недели.
+/* Crypto Analytics — прототип, редизайн 20.10.2026 по отзывам трейдера и новичка.
+   Структура: Главная (кошельки только на просмотр, цена BTC, 4 действия, сумма в пределах лимита, новости) ·
+   Рынок (прогнозы, сценарии, монеты, новости) · Журнал (решения, сделки, итоги) · «Спросить» (ассистент).
+   Вход: «Попробовать без денег» (песочница, без почты и согласий) или 3 шага реального режима.
+   Согласия и страна — только перед переходом на биржу-партнёр.
    Под перенос в React Native (Expo): экраны собраны из одних и тех же компонентов (карточка, крупная цифра, кнопка,
-   строка, оповещение, строка токена), раскладка только flex, эффекты с аналогами в Expo
-   (размытие → expo-blur, графики → react-native-svg, анимации → transform и opacity). Цифры иллюстративные. */
+   строка, карточка кошелька, круглое действие, подсказка термина), раскладка только flex, эффекты с аналогами в Expo
+   (размытие → expo-blur, графики → react-native-svg, градиент карточки → expo-linear-gradient, анимации → transform и opacity).
+   Цифры иллюстративные. */
 'use strict';
 
 /* ---------- данные и модель ---------- */
-const PRICE = 86530, USD_BYN = 3.275, BTC_BYN = 283400;
+const PRICE = 86530, USD_BYN = 3.275, BTC_BYN = 283400, CHG24 = 1.2;
 const LIMIT_PCT = 0.06, LIM_PCTS = [0.03, 0.06, 0.1];   /* лимит по умолчанию — 6% баланса */
-const SAND_CAP = 10000;
+const SAND_CAP = 1000;                                 /* новичку $5 000 — «много»: виртуальные $1 000 */
 const DISC = 'Это не рекомендация купить или продать, а информация для пересчёта вашего плана.';
 /* bad — сильное падение: средний результат 1 недели из 10 с самым сильным падением; fg — индекс страха и жадности */
 const MARKET = {
   calm:  { tails:[15,69,16], lo:81122, hi:92383, bad:300/3467, minus:51, k:1, fg:54 },
   alert: { tails:[19,64,17], lo:80400, hi:92900, bad:300/2740, minus:53, k:1.11, fg:72 },
 };
+/* даты — от сегодняшнего дня, чтобы расчёт не выглядел застывшим */
+const MON = ['янв.','февр.','марта','апр.','мая','июня','июля','авг.','сент.','окт.','нояб.','дек.'];
+const DAYS = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+const NOW = new Date();
+const dAt = off => { const d = new Date(NOW); d.setDate(d.getDate() + off); return d; };
+const dShort = off => { const d = dAt(off); return `${d.getDate()} ${MON[d.getMonth()]}`; };
+const todayLong = () => `${DAYS[NOW.getDay()]}, ${NOW.getDate()} ${['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'][NOW.getMonth()]}`;
+/* прошлая неделя: по ней считаем итог в песочнице и при «перемотке» (цифры демо) */
+const WEEK = { from:84900, to:PRICE, low:82270, lo:80900, hi:91800, chg:PRICE / 84900 - 1, worst:1 - 82270 / 84900,
+  label:() => { const a = dAt(-7), b = dAt(0); return a.getMonth() === b.getMonth() ? `${a.getDate()}–${b.getDate()} ${MON[b.getMonth()]}` : `${dShort(-7)} – ${dShort(0)}`; } };
+
+/* словарь: подсказка «?» у каждого термина — простыми словами */
+const GLOSS = {
+  limit:['Лимит потерь', 'Сколько денег вы готовы потерять за одну плохую неделю. Это не цель и не прогноз, а ваша граница. По умолчанию — 6% баланса, можно поменять.'],
+  sum:['Сумма в пределах лимита', 'Сколько можно держать в биткоине, чтобы плохая неделя обошлась примерно в ваш лимит. Считаем так: лимит ÷ сильное падение, но не больше баланса. Это не совет купить — это граница для вашего плана.'],
+  bad:['Сильное падение', 'Модель прокручивает 20 000 возможных недель. Мы берём 1 неделю из 10 — самые неудачные — и смотрим, сколько в среднем теряла цена. Бывает и хуже.'],
+  model:['Модель', 'Программа, которая по прошлым ценам и данным с бирж прикидывает, какими могут быть следующие 7 дней. Будущего она не знает — она показывает разброс.'],
+  range:['Диапазон', 'Между какими ценами окажется биткоин через неделю в 8 случаях из 10 по модели. Чем он шире, тем меньше уверенности.'],
+  scen:['Сценарии', 'Возможные варианты недели, которые просчитала модель. Тонкие линии на графике — несколько таких вариантов, закрашенная область — где оказалось большинство.'],
+  partner:['Биржа-партнёр', 'Место, где на самом деле покупают и продают биткоин. Деньги, проверка личности и сделки — там. Мы только показываем расчёт и переводим вас на сайт биржи.'],
+  pvt:['Резидент ПВТ', 'Компания из белорусского Парка высоких технологий. По закону Беларуси покупать и продавать токены за деньги можно только у таких компаний. Список — на сайте park.by.'],
+  token:['Токен', 'Цифровая монета, например биткоин. Не является деньгами и не обеспечен государством, цена может сильно меняться.'],
+  lev:['Плечо', 'Покупка на заёмные деньги. Плата за плечо (funding) — сколько за это платят. Когда так покупают многие, цена может резко упасть: им приходится продавать разом.'],
+  fut:['Фьючерсы', 'Договоры на покупку или продажу по цене в будущем. На них часто торгуют с плечом. Мы их не считаем, но следим: там видно, сколько на рынке заёмных денег.'],
+  fg:['Индекс страха и жадности', 'Настроение рынка от 0 (все боятся) до 100 (все жадничают). Считает сайт alternative.me. В наш расчёт не входит — это фон.'],
+  dvol:['Ожидаемый размах цены', 'Насколько сильно, по мнению рынка, цена может качаться в ближайший месяц. Это индекс DVOL биржи Deribit, в пунктах: около 40 — спокойно, около 60 — неспокойно.'],
+  alert:['Оповещение', 'Сообщение внутри приложения, когда риск недели заметно меняется. Всегда отвечает на три вопроса: что случилось, что это значит для вас и откуда данные.'],
+  sand:['Песочница', 'Режим с виртуальными $1 000: те же расчёты, но без настоящих денег. Записи помечаются и не смешиваются с реальными.'],
+  wallet:['Кошелёк в приложении', 'Только просмотр. Баланс вы вводите сами или подключаете биржу либо адрес только на чтение. Мы не храним деньги и не можем ими распоряжаться.'],
+};
 /* оповещения: что случилось → что это значит для вас → как это меняет сумму → откуда данные */
 const ALERTS = [
-  { id:'funding', set:'funding', icon:'stack', cls:'c-or', date:'18 окт.', title:'Многие торгуют в долг в расчёте на рост', short:'Плата за плечо выше, чем в 94% дней года',
+  { id:'funding', set:'funding', icon:'stack', cls:'c-or', title:'Многие покупают на заёмные деньги', short:'Плата за плечо выше, чем в 94% дней года',
     means:'Резкое падение стало вероятнее, поэтому сумма в пределах лимита уменьшилась.',
-    kv:[['Падение больше 5% по модели','15% → 19%'],['Плата за плечо','0,045% за 8 ч'],['Открытые позиции на фьючерсах','+12% за 3 дня'],['Цена за 3 дня','+1%']],
+    kv:[['Падение больше 5% по модели','15% → 19%'],['Плата за плечо (funding)','0,045% за 8 ч'],['Ставок на фьючерсах','+12% за 3 дня'],['Цена за 3 дня','+1%']],
     note:'Раньше после такого перекоса резкое падение случалось чаще, но не всегда.',
-    src:'Binance, Bybit, OKX · обновлено 09:30' },
-  { id:'vol', set:'vol', icon:'wave', cls:'c-vi', date:'18 окт.', title:'Цена стала колебаться сильнее', short:'Ожидаемый размах цены +18% за 2 дня',
+    src:'Binance, Bybit, OKX · обновлено сегодня в 09:30' },
+  { id:'vol', set:'vol', icon:'wave', cls:'c-vi', title:'Цена стала колебаться сильнее', short:'Ожидаемый размах цены +10% за 2 дня',
     means:'Цена может сильнее качнуться в обе стороны, поэтому сумма под ваш лимит меньше.',
-    kv:[['Ширина диапазона по модели','$11 261 → $12 500'],['Ожидаемый размах цены','52 → 58, в 1,1 раза выше']],
+    kv:[['Ширина диапазона по модели','$11 261 → $12 500'],['Ожидаемый размах цены (DVOL)','52 → 58 пунктов']],
     note:'Движения ожидаются сильнее в обе стороны.',
-    src:'Deribit (индекс DVOL) и модель сценариев · обновлено 09:30' },
+    src:'Deribit (индекс DVOL) и модель сценариев · обновлено сегодня в 09:30' },
 ];
 /* факторы: направление, сила, источник, время, как считаем, ограничение */
-const F_TREND = { id:'trend', icon:'trend', cls:'c-bl', t:'Направление цены', s:'Цена выше средних за 50 и 200 дней', src:'Binance', at:'09:30', p:2, val:'+6% к средней за 50 дней', how:'Сравниваем цену со средней ценой за последние 50 и 200 дней.', lim:'Когда цена стоит на месте, этот фактор почти ничего не добавляет.' };
+const F_TREND = { id:'trend', icon:'trend', cls:'c-bl', t:'Направление цены', s:'Цена выше средней за 50 и 200 дней', src:'Binance', at:'09:30', p:2, val:'+6% к средней за 50 дней', how:'Сравниваем цену со средней ценой за последние 50 и 200 дней.', lim:'Когда цена стоит на месте, этот фактор почти ничего не добавляет.' };
 const F_FED = { id:'fed', icon:'info', cls:'c-gy', t:'Решение по ставке в США 29 окт.', s:'Модель не учитывает новости', src:'—', at:'', p:0, val:'вне модели', how:'Новости и решения регуляторов в модель не входят.', lim:'Сильные новости могут вывести цену за любой диапазон.' };
 const FACTORS = () => S.alertOn ? {
   up:[F_TREND,
-    { id:'flow', icon:'flow', cls:'c-te', t:'Вывод BTC с бирж', s:'За неделю выведено 18 тыс. BTC', src:'CryptoQuant', at:'08:00', p:1, val:'−18 тыс. BTC за 7 дней', how:'Считаем, сколько BTC пришло на кошельки бирж и ушло с них.', lim:'Данные приходят с задержкой до 2 часов, часть кошельков неизвестна.' }],
+    { id:'flow', icon:'flow', cls:'c-te', t:'Биткоин уходит с бирж', s:'За неделю забрали 18 тыс. BTC', src:'CryptoQuant', at:'08:00', p:1, val:'−18 тыс. BTC за 7 дней', how:'Считаем, сколько BTC пришло на кошельки бирж и ушло с них.', lim:'Данные приходят с задержкой до 2 часов, часть кошельков неизвестна.' }],
   down:[
-    { id:'funding', icon:'stack', cls:'c-or', t:'Ставки с плечом', s:'Плата за плечо 0,045% за 8 ч, выше 94% дней года', src:'Binance, Bybit, OKX', at:'09:30', p:3, val:'0,045% за 8 ч', how:'Средняя плата за плечо (funding) на бессрочных фьючерсах трёх бирж.', lim:'Когда цена уверенно растёт, высокая плата может держаться неделями.' },
-    { id:'oi', icon:'layers', cls:'c-ye', t:'Открытые позиции на фьючерсах', s:'+12% за 3 дня при цене +1%', src:'Binance', at:'09:30', p:2, val:'+12% за 3 дня', how:'Позиций становится больше, а цена не растёт — так копится плечо.', lim:'Не показывает, в какую сторону открыты позиции.' }],
+    { id:'funding', icon:'stack', cls:'c-or', t:'Покупки на заёмные деньги', s:'Плата за плечо 0,045% за 8 ч — выше, чем в 94% дней года', src:'Binance, Bybit, OKX', at:'09:30', p:3, val:'0,045% за 8 ч', how:'Средняя плата за плечо (funding) на бессрочных фьючерсах трёх бирж.', lim:'Когда цена уверенно растёт, высокая плата может держаться неделями.' },
+    { id:'oi', icon:'layers', cls:'c-ye', t:'Ставок на фьючерсах больше', s:'+12% за 3 дня, а цена +1%', src:'Binance', at:'09:30', p:2, val:'+12% за 3 дня', how:'Ставок (открытых позиций) становится больше, а цена не растёт — так копятся заёмные деньги.', lim:'Не показывает, в какую сторону сделаны ставки.' }],
   unk:[F_FED,
-    { id:'etf', icon:'info', cls:'c-gy', t:'Биржевые фонды США за пятницу', s:'Данные пришли не полностью', src:'Farside', at:'вчера', p:0, val:'нет данных', how:'Сколько денег за день пришло в фонды на биткоин в США и ушло из них.', lim:'Пока данных нет, фактор в расчёте не участвует.' }],
+    { id:'etf', icon:'info', cls:'c-gy', t:'Фонды на биткоин в США за пятницу', s:'Данные пришли не полностью', src:'Farside', at:'вчера', p:0, val:'нет данных', how:'Сколько денег за день пришло в фонды на биткоин в США и ушло из них.', lim:'Пока данных нет, фактор в расчёте не участвует.' }],
 } : {
   up:[F_TREND,
-    { id:'oi', icon:'layers', cls:'c-ye', t:'Открытые позиции на фьючерсах', s:'+2% за 3 дня вместе с ценой', src:'Binance', at:'09:30', p:1, val:'+2% за 3 дня', how:'Позиции растут вместе с ценой — перекоса нет.', lim:'Не показывает, в какую сторону открыты позиции.' }],
+    { id:'oi', icon:'layers', cls:'c-ye', t:'Ставки на фьючерсах', s:'+2% за 3 дня вместе с ценой', src:'Binance', at:'09:30', p:1, val:'+2% за 3 дня', how:'Ставки растут вместе с ценой — перекоса нет.', lim:'Не показывает, в какую сторону сделаны ставки.' }],
   down:[
-    { id:'vol', icon:'wave', cls:'c-vi', t:'Ожидаемый размах цены', s:'По опционам, в обычных пределах', src:'Deribit', at:'09:30', p:1, val:'44', how:'Какой размах цены на месяц вперёд закладывают покупатели опционов (индекс DVOL).', lim:'Рынок опционов на биткоин небольшой, оценка шумная.' }],
+    { id:'vol', icon:'wave', cls:'c-vi', t:'Ожидаемый размах цены', s:'44 пункта — в обычных пределах', src:'Deribit', at:'09:30', p:1, val:'44 пункта', how:'Какой размах цены на месяц вперёд закладывают покупатели опционов (индекс DVOL).', lim:'Рынок опционов на биткоин небольшой, оценка шумная.' }],
   unk:[F_FED],
 };
 /* «что изменит картину»: у каждого пункта — пояснение, что это такое */
 const CHANGERS = () => S.alertOn ? [
-  { id:'fund', t:'Плата за плечо снизится до 0,02%', s:'риск падения вернётся к ~15%',
-    what:'Плата за плечо (funding) — сколько каждые 8 часов платят друг другу те, кто торгует на фьючерсах в долг. Высокая плата значит, что многие поставили на рост. Когда она снижается, перекос уходит.' },
-  { id:'dvol', t:'Ожидаемый размах цены опустится ниже 52', s:'диапазон сузится примерно на 10%',
-    what:'Индекс ожидаемого размаха цены (DVOL) считает биржа опционов Deribit. Он показывает, насколько сильных движений рынок ждёт в ближайший месяц. Чем он ниже, тем спокойнее.' },
+  { id:'fund', t:'Плата за плечо снизится до 0,02% за 8 ч', s:'риск падения вернётся к ~15%', g:'lev',
+    what:'Плата за плечо (funding) — сколько каждые 8 часов платят друг другу те, кто торгует на фьючерсах на заёмные деньги. Высокая плата значит, что многие поставили на рост. Когда она снижается, перекос уходит.' },
+  { id:'dvol', t:'Ожидаемый размах цены опустится ниже 52 пунктов', s:'сейчас 58 · диапазон сузится примерно на 10%', g:'dvol',
+    what:'Индекс ожидаемого размаха цены (DVOL) считает биржа опционов Deribit, в пунктах. Он показывает, насколько сильных движений рынок ждёт в ближайший месяц: около 40 — спокойно, около 60 — неспокойно.' },
 ] : [
-  { id:'fund', t:'Плата за плечо поднимется выше 0,04%', s:'риск падения вырастет до ~19%',
-    what:'Плата за плечо (funding) — сколько каждые 8 часов платят друг другу те, кто торгует на фьючерсах в долг. Высокая плата значит, что многие поставили на рост, и резкое падение становится вероятнее.' },
+  { id:'fund', t:'Плата за плечо поднимется выше 0,04% за 8 ч', s:'риск падения вырастет до ~19%', g:'lev',
+    what:'Плата за плечо (funding) — сколько каждые 8 часов платят друг другу те, кто торгует на фьючерсах на заёмные деньги. Высокая плата значит, что многие поставили на рост, и резкое падение становится вероятнее.' },
 ];
 /* топ-20 по капитализации: цена и изменение за 24 ч (демо) */
 const TOKENS = [
@@ -65,12 +97,12 @@ const TOKENS = [
   ['LINK','Chainlink',17.9,-0.5],['AVAX','Avalanche',31.2,-2.4],['XLM','Stellar',0.38,1.1],['SUI','Sui',3.62,4],['TON','Toncoin',4.9,-0.7],
   ['SHIB','Shiba Inu',0.0000181,1.5],['HBAR','Hedera',0.24,0.9],['DOT','Polkadot',5.8,-1],['BCH','Bitcoin Cash',486,0.3],['LTC','Litecoin',98.4,-0.4],
 ].map(([s, n, p, c]) => ({ s, n, p, c }));
-/* лента новостей (демо, заголовки условные): у каждой — что это значит для вас */
+/* лента новостей (демо, заголовки условные): простыми словами и что это значит для вас */
 const NEWS = [
-  { t:'В США 29 октября объявят решение по ставке', tag:'Регуляторы', ago:'2 ч назад', means:'Новости модель не учитывает. В дни таких решений цена может выйти за диапазон сценариев.' },
-  { t:'Открытых позиций на фьючерсах BTC больше всего за квартал', tag:'Фьючерсы', ago:'4 ч назад', means:'Это одна из причин сегодняшнего оповещения: плеча на рынке много.' },
-  { t:'В биржевые фонды на биткоин в США третью неделю приходят деньги', tag:'Фонды', ago:'вчера', means:'Фон для рынка, в расчёт суммы напрямую не входит.' },
-  { t:'Крупные кошельки вывели с бирж 18 тыс. BTC за неделю', tag:'Потоки', ago:'вчера', means:'Учтено в расчёте риска, влияние слабое.' },
+  { t:'В США 29 октября решат, менять ли ставку', tag:'Экономика', ago:'2 ч назад', means:'Новости модель не учитывает. В дни таких решений цена может выйти за диапазон сценариев.' },
+  { t:'Покупок биткоина на заёмные деньги больше всего за 3 месяца', tag:'Рынок', ago:'4 ч назад', means:'Когда заёмных денег много, резкие падения случаются чаще. Это учтено в расчёте суммы.' },
+  { t:'В фонды на биткоин в США третью неделю приходят деньги', tag:'Фонды', ago:'вчера', means:'Фон для рынка, в расчёт суммы напрямую не входит.' },
+  { t:'Крупные владельцы забрали с бирж 18 тыс. BTC за неделю', tag:'Потоки', ago:'вчера', means:'Учтено в расчёте риска, влияние слабое.' },
 ];
 const CLOSES = [77439,77340,81270,79661,79832,80342,79112,78456,78306,76569,77226,77279,76842,78189,75644,76206,76417,80884,81250,81178,86620,86209,84398,84410,84100,84433,84472,83500,83664,86530];
 const WEEKS = [1,1,1,0,1,1,1,1,0,1,1,1];
@@ -86,27 +118,31 @@ const TRADES = (() => {
   const size=[900,1200,1500,800,1000,1400,1600,700,600,1300,1100,900,1000,1500];
   return pnl.map((p,i)=>({date:d[i], side:i%3===2?'Продажа':'Покупка', size:size[i], gross:p, fee:fee[i], hot:hot.includes(i)}));
 })();
+/* пример с историей — только для показа (Профиль → Демо), каждая запись помечена «пример» */
+const DEMO_J = () => [
+  { id:1, demo:true, date:'11 окт.', kind:'ex', ex:'1', plan:3200, limit:300, due:true },
+  { id:2, demo:true, date:'5 окт.', kind:'ex', ex:'1', plan:3467, invested:3000, limit:300, inRange:true, limitOk:true, result:{ amt:3000, worst:93, end:57 } },
+  { id:3, demo:true, date:'28 сен.', kind:'skip', plan:3300, invested:0, limit:300, inRange:true },
+  { id:4, demo:true, date:'21 сен.', kind:'plan', plan:3100, invested:3100, limit:300, inRange:false, limitOk:true, note:'падение −7,8%', result:{ amt:3100, worst:242, end:-178 } },
+];
+/* биржи-партнёры: названия появятся после договора — честно пишем об этом */
+const EXCH = { '1':'Биржа-партнёр №1', '2':'Биржа-партнёр №2' };
 
 const DEFAULT = () => ({
-  onb:'land', cons:{ model:false, loss:false }, consent:null, capital:5000, limit:300, limitAuto:true, customCap:false, limEdit:false,
-  country:'BY', email:'', sandbox:false, realCap:null,
-  view:'today', alertOn:true, noSignal:false, veil:false,
+  onb:'land', realReady:false, consent:null, cons:{ model:false, loss:false },
+  capital:0, limit:0, limitAuto:true, customCap:false, limEdit:false,
+  acc:{ real:null, sand:{ capital:SAND_CAP, limit:Math.round(SAND_CAP * LIMIT_PCT), limitAuto:true } },
+  wallets:[], country:null, email:'', sandbox:false, demo:false, seenSum:false,
+  view:'home', alertOn:false, noSignal:false, veil:false,
   stop:'', fee:'', slip:'', pos:'',
-  hypOpen:false, hyp:null, conf:null, note:'',
-  plan:{ amount:3467, date:'5 окт.' },
-  journal:[
-    { id:1, date:'11 окт.', kind:'ex', ex:'А', plan:3200, due:true },
-    { id:2, date:'5 окт.', kind:'ex', ex:'А', plan:3467, invested:3000, inRange:true, limitOk:true },
-    { id:3, date:'28 сен.', kind:'skip', inRange:true },
-    { id:4, date:'21 сен.', kind:'save', plan:3100, invested:3100, inRange:false, limitOk:true, note:'падение −7,8%' },
-  ],
-  jseg:'dec', fseg:'down',
+  hypOpen:false, hyp:null, conf:null, note:'', pick:'plan',
+  plan:null, journal:[], jseg:'dec', fseg:'down',
   trades:false, apiPerm:{read:true,trade:false,withdraw:false},
   set:{ funding:true, oi:true, vol:true, flow:false, maxDay:2, quiet:true },
-  exPick:'А',
+  exPick:'1',
 });
 let S = DEFAULT();
-const KEY = 'ca-proto-v3';
+const KEY = 'ca-proto-v4';   /* v4: кошельки, раздельные балансы песочницы и реального режима, чистый старт */
 try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) S = Object.assign(DEFAULT(), saved); } catch (e) {}
 
 /* тема: «Системная» следует настройке устройства; выбор хранится отдельно от состояния и не сбрасывается «Начать заново» */
@@ -131,11 +167,18 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch
 const M = () => S.alertOn ? MARKET.alert : MARKET.calm;
 const fmt = n => Math.round(n).toLocaleString('ru-RU');
 const usd = n => (n < 0 ? '−' : '') + '$' + fmt(Math.abs(n));
+const sgn = n => (n > 0 ? '+' : n < 0 ? '−' : '') + '$' + fmt(Math.abs(n));
 const num = v => parseFloat(String(v ?? '').replace(/\s/g, '').replace(',', '.')) || 0;
 const pct1 = x => (x * 100).toFixed(1).replace('.', ',') + '%';
 const autoLim = cap => Math.max(10, Math.round(cap * LIMIT_PCT));
 const limPct = () => S.capital ? Math.round(S.limit / S.capital * 100) + '% баланса' : '';
 function setCapital(v) { S.capital = Math.min(9999999, Math.max(0, Math.round(v))); if (S.limitAuto) S.limit = autoLim(S.capital); }
+const walletsTotal = () => S.wallets.reduce((a, w) => a + w.bal, 0);
+
+/* живая цена: в прототипе «дышит» имитацией раз в 15 с, модель от неё не зависит */
+let LIVE = PRICE, liveAt = Date.now() - 2 * 60000;
+const live24 = () => (LIVE / (PRICE / (1 + CHG24 / 100)) - 1) * 100;
+const ago = () => { const m = Math.floor((Date.now() - liveAt) / 60000); return m < 1 ? 'обновлено только что' : `обновлено ${m} мин назад`; };
 
 /* сумма в пределах лимита = лимит ÷ сильное падение, но не больше баланса и минус то, что уже в BTC.
    Сильное падение — средний результат 1 недели из 10 с самым сильным падением (по 20 000 смоделированных недель).
@@ -159,20 +202,32 @@ function calc(over) {
 const calcSum = () => calc().sum || 0;
 const calmSum = () => Math.min(S.capital, Math.round(S.limit / MARKET.calm.bad));
 const planBad = () => Math.round(S.plan.amount * M().bad);
-const planOver = () => !!S.plan && planBad() > S.limit;
+const planOver = () => !!S.plan && !S.sandbox && planBad() > S.limit;
 const activeAlerts = () => S.alertOn && !S.noSignal ? ALERTS.filter(a => S.set[a.set]) : [];
-const REGIMES = { trend:['Устойчивое движение','цена долго идёт в одну сторону'], range:['Спокойно','цена ходит в узком коридоре'], stress:['Напряжённо','много ставок с плечом, возможны резкие движения'], unk:['Неясно','данных мало или они противоречат друг другу'] };
+const REGIMES = { trend:['Устойчивое движение','цена долго идёт в одну сторону'], range:['Спокойно','цена ходит в узком коридоре'], stress:['Неспокойно','много покупок на заёмные деньги, возможны резкие движения'], unk:['Неясно','данных мало или они противоречат друг другу'] };
 const regimeKey = () => S.noSignal ? 'unk' : S.alertOn ? 'stress' : 'range';
 const regime = () => REGIMES[regimeKey()][0];
 const fgLabel = v => v < 25 ? 'сильный страх' : v < 45 ? 'страх' : v <= 55 ? 'нейтрально' : v <= 75 ? 'жадность' : 'сильная жадность';
-const fresh = () => S.noSignal ? { c:'or', t:'данные от 06:10' } : { c:'gr', t:'обновлено 09:30' };
+const fresh = () => S.noSignal ? { c:'or', t:'данные от вчера, 06:10' } : { c:'gr', t:'сегодня в 09:30' };
 const ico = (id, c = 'i') => `<svg class="${c}" aria-hidden="true"><use href="#${id}"/></svg>`;
 const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isPhone = () => matchMedia('(max-width: 899px)').matches;
-const initial = () => (S.email.trim()[0] || 'И').toUpperCase();
+const initial = () => (S.email.trim()[0] || 'Я').toUpperCase();
 const price = p => p >= 100 ? usd(p) : p >= 1 ? '$' + p.toFixed(2).replace('.', ',') : '$' + p.toPrecision(3).replace('.', ',');
 const chg = c => (c > 0 ? '+' : c < 0 ? '−' : '') + Math.abs(c).toFixed(1).replace('.', ',') + '%';
-
+const chgCls = c => c > 0 ? 'up' : c < 0 ? 'dn' : '';
+/* журнал по режимам: записи песочницы не смешиваются с реальными (график, статистика, итоги) */
+const realJ = () => S.journal.filter(j => !j.sand);
+const modeJ = () => S.journal.filter(j => !!j.sand === S.sandbox);
+/* итог недели для записи: сколько было в BTC, худший момент и конец недели (по данным прошлой недели) */
+function resolve(j, invested) {
+  if (invested != null) j.invested = invested;
+  const amt = j.invested ?? ((j.kind === 'plan' || j.kind === 'ex') ? j.plan : 0), lim = j.limit || S.limit;
+  const hypo = amt ? 0 : j.plan || 0, base = amt || hypo;
+  j.result = { amt, hypo, worst:Math.round(base * WEEK.worst), end:Math.round(base * WEEK.chg) };
+  j.limitOk = Math.round(amt * WEEK.worst) <= lim; j.inRange = true; j.pending = false; j.due = false;
+  return j;
+}
 /* ---------- веер сценариев: история 30 дней + полосы 50% / 80% на 7 дней ---------- */
 const FAN = { L:4, R:44, T:8, B:18, lo:73000, hi:97000 };
 const FAN_DIMS = { '':[300,200], compact:[300,200], wide:[720,230] };
@@ -225,25 +280,29 @@ function morphFan() {
   (function step(now){ const t = Math.min(1,(now-t0)/dur); apply(from + (to-from)*io(t)); if (t < 1) requestAnimationFrame(step); })(t0);
 }
 
-/* «план и факт»: как менялась сумма в пределах лимита при пересчётах и сколько было в сделке */
-const PLANHIST = () => [
-  { d:'21 сен.', plan:3100, fact:3100 },
-  { d:'28 сен.', plan:3300, fact:0 },
-  { d:'5 окт.', plan:3467, fact:3000 },
-  { d:'11 окт.', plan:3200, fact:null },
-  { d:'18 окт.', plan:calcSum(), alert:S.alertOn ? 'оповещения 18 окт.' : null },
-];
+/* «план и факт»: как менялась сумма в пределах лимита и сколько было в сделке — только реальные записи, без песочницы */
 function planChart() {
-  const P = PLANHIST(), W = 320, H = 160, L = 8, R = 8, T = 24, B = 24, max = 4000, n = P.length;
+  const P = realJ().filter(j => j.plan).slice(0, 5).reverse().map(j => ({ d:j.date, plan:j.plan, fact:j.invested ?? (j.kind === 'skip' ? 0 : null) }));
+  if (!P.length) return `<div class="empty">График появится после первого реального решения. Записи песочницы сюда не попадают.</div>`;
+  P.push({ d:'сегодня', plan:calcSum(), alert:S.alertOn });
+  const W = 320, H = 160, L = 8, R = 8, T = 24, B = 24, n = P.length;
+  const max = Math.max(1000, ...P.map(p => Math.max(p.plan, p.fact || 0))) * 1.15;
   const x = i => L + (W-L-R) * (i + .5) / n, y = v => T + (H-T-B) * (1 - v / max), bw = 18;
+  const k = v => v >= 1000 ? (v/1000).toFixed(1).replace('.', ',') + ' тыс.' : fmt(v);
   const bars = P.map((p, i) => p.fact ? `<rect class="pf-bar" x="${x(i)-bw/2}" y="${y(p.fact)}" width="${bw}" height="${H-B-y(p.fact)}" rx="6"/>`
     : p.fact === 0 ? `<text class="pf-skip" x="${x(i)}" y="${H-B-6}" text-anchor="middle">пропуск</text>` : '').join('');
   const line = P.map((p, i) => `${x(i).toFixed(1)},${y(p.plan).toFixed(1)}`).join(' ');
   const dots = P.map((p, i) => `<circle class="${p.alert ? 'pf-al' : 'pf-dot'}" cx="${x(i)}" cy="${y(p.plan)}" r="${p.alert ? 5 : 3.5}"/>`).join('');
-  const vals = P.map((p, i) => `<text class="pf-v" x="${x(i)}" y="${y(p.plan)-10}" text-anchor="middle">${(p.plan/1000).toFixed(1).replace('.', ',')} тыс.</text>`).join('');
+  const vals = P.map((p, i) => `<text class="pf-v" x="${x(i)}" y="${y(p.plan)-10}" text-anchor="middle">${k(p.plan)}</text>`).join('');
   const labels = P.map((p, i) => `<text x="${x(i)}" y="${H-6}" text-anchor="middle">${p.d}</text>`).join('');
-  return `<svg class="pf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Как менялась сумма в пределах лимита и сколько было в сделке">${bars}<polyline class="pf-line" points="${line}"/>${dots}${vals}${labels}</svg>
-    <div class="legend"><span><i class="lg lg-line"></i>сумма в пределах лимита</span><span><i class="lg lg-bar"></i>было в сделке</span>${S.alertOn ? '<span><i class="lg lg-al"></i>пересчёт после оповещения</span>' : ''}</div>`;
+  return `<svg class="pf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Как менялась сумма в пределах лимита и сколько было в сделке">${bars}${n > 1 ? `<polyline class="pf-line" points="${line}"/>` : ''}${dots}${vals}${labels}</svg>
+    <div class="legend"><span><i class="lg lg-line"></i>сумма в пределах лимита</span><span><i class="lg lg-bar"></i>было в сделке</span>${S.alertOn ? '<span><i class="lg lg-al"></i>после оповещения</span>' : ''}</div>`;
+}
+/* цена за 30 дней — маленький график под ценой (в RN — react-native-svg) */
+function sparkSVG() {
+  const W = 300, H = 64, lo = Math.min(...CLOSES), hi = Math.max(...CLOSES);
+  const pts = CLOSES.map((v, i) => `${(W * i / (CLOSES.length - 1)).toFixed(1)},${(4 + (H - 8) * (hi - v) / (hi - lo)).toFixed(1)}`).join(' ');
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Цена BTC за 30 дней"><polyline points="${pts}" fill="none" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
 /* ---------- компоненты (каждый потом станет компонентом React Native) ---------- */
@@ -255,7 +314,7 @@ function row(o) {
   return `<${tag} class="row${tap ? ' tap press' : ''}${o.extra ? ' ' + o.extra : ''}" ${o.attrs || ''}>${lead}<span class="rt"><b>${o.title}</b>${o.sub ? `<small>${o.sub}</small>` : ''}</span>${o.val != null ? `<span class="v ${o.vc || ''}">${o.val}</span>` : ''}${o.right || ''}${tap && !o.nochev ? chev : ''}</${tag}>`;
 }
 /* группа строк: разделитель — отдельный элемент, а не CSS-селектор соседей (в RN это <Separator/>) */
-const grp = (rows, cls = '') => { const r = rows.filter(Boolean), ind = s => /class="(cat|gl|rank)/.test(s);
+const grp = (rows, cls = '') => { const r = rows.filter(Boolean), ind = s => /class="(cat|gl|rank|stp)/.test(s);
   return `<div class="grp ${cls}">${r.map((x, i) => i ? `<span class="hr${ind(x) || ind(r[i-1]) ? ' in' : ''}"></span>${x}` : x).join('')}</div>`; };
 const sec = t => `<h3 class="sec">${t}</h3>`;
 /* панель: заголовок + содержимое; на десктопе — карточка, на телефоне — секция с заголовком */
@@ -265,122 +324,189 @@ const seg = (name, cur, opts) => `<div class="seg" role="tablist">${opts.map(([k
 const toggle = (attrs, on, label, dis) => `<button class="toggle" role="switch" aria-checked="${!!on}" ${attrs} aria-label="${label}" ${dis ? 'disabled' : ''}></button>`;
 const dots = p => `<span class="pw" aria-label="сила ${p} из 3">${[1,2,3].map(i => `<i class="${i <= p ? 'on' : ''}"></i>`).join('')}</span>`;
 const back = to => `<button class="circ press" data-act="back" ${to ? `data-to="${to}"` : ''} aria-label="Назад">${ico('back')}</button>`;
+/* подсказка термина: «?» рядом со словом или само слово с пунктиром — открывают объяснение простыми словами */
+const hint = k => `<button class="hint" data-term="${k}" aria-label="Что такое «${GLOSS[k][0]}»?">?</button>`;
+const term = (k, t) => `<button class="term" data-term="${k}">${t}</button>`;
 /* шапка вложенного экрана: назад + заголовок по центру */
 const navbar = (title, to, sub = '') => `<div class="nb">${back(to)}<div class="nbt">${title}${sub ? `<small>${sub}</small>` : ''}</div><span class="nbs"></span></div>`;
 /* шапка экрана первого уровня: крупный заголовок слева, действия справа */
-const topbar = (title, sub, right = '') => `<div class="tb"><div><div class="tbs">${sub}</div><h1 class="ttl">${title}</h1></div>${right}</div>`;
+const topbar = (title, sub, right = '') => `<div class="tb"><div class="rt"><div class="tbs">${sub}</div><h1 class="ttl">${title}</h1></div>${right}</div>`;
 const ava = () => `<button class="ava press" data-go="profile" aria-label="Профиль и настройки">${initial()}</button>`;
 const sandTag = () => S.sandbox ? `<span class="tag t-bl">${ico('spark')}Песочница</span>` : '';
 const sw = (key, v, html, cls = '') => `<span class="sw ${cls}" data-sw="${key}" data-v="${v}">${html}</span>`;
 const capText = () => `Если BTC за неделю сильно упадёт, вы потеряете в среднем около ${usd(S.limit)}`;
+const mini = (t, c) => `<span class="mini ${c}">${t}</span>`;
 /* крупная цифра: подпись сверху, число, одна фраза под ним */
 function heroBlock(c, key) {
-  if (c.none) return `<div class="lbl2">Сумма в пределах лимита</div>${sw(key, 'none', 'Без позиции', 'hero2')}<p class="cap">${c.reason} Пропустить — нормально.</p>`;
-  const was = S.alertOn && !c.adjusted && calmSum() !== c.sum ? `<p class="was num">было ${usd(calmSum())} до оповещения 18 окт.</p>` : '';
-  return `<div class="lbl2">Сумма в пределах лимита</div>${sw(key, c.sum, usd(c.sum), 'hero num')}<p class="cap num">${capText()}</p>${was}`;
+  const lbl = `<div class="lbl2">Сумма в пределах лимита ${hint('sum')}</div>`;
+  if (c.none) return `${lbl}${sw(key, 'none', 'Без позиции', 'hero2')}<p class="cap">${c.reason} Пропустить — нормально.</p>`;
+  const was = S.alertOn && !c.adjusted && calmSum() !== c.sum ? `<p class="was num">было ${usd(calmSum())} до оповещения</p>` : '';
+  return `${lbl}${sw(key, c.sum, usd(c.sum), 'hero num')}<p class="cap num">${capText()}</p>${was}`;
 }
 const trio = () => { const m = M(); return `<div class="trio num">
-  <div><b class="dn">${m.tails[0]}%</b><small>упадёт больше 5%</small></div>
-  <div><b>${m.tails[1]}%</b><small>в пределах ±5%</small></div>
-  <div><b class="up">${m.tails[2]}%</b><small>вырастет больше 5%</small></div></div>`; };
+  <div><b class="dn">${m.tails[0]}%</b><small>упадёт больше чем на 5%</small></div>
+  <div><b>${m.tails[1]}%</b><small>изменится не больше чем на 5%</small></div>
+  <div><b class="up">${m.tails[2]}%</b><small>вырастет больше чем на 5%</small></div></div>`; };
 const fgMeter = v => `<span class="fgv"><span class="fgn num">${v}</span><span class="fgl">${fgLabel(v)}</span></span>
   <span class="fgbar"><i style="left:${v}%"></i></span><span class="fgs"><small>страх</small><small>жадность</small></span>`;
 const fgCard = () => `<button class="card fg press" data-sheet="fg"><span class="fgh"><b>Индекс страха и жадности</b>${chev}</span>${fgMeter(M().fg)}</button>`;
-const tokenRow = (t, i) => row({ lead:`<span class="rank num">${i + 1}</span>`, title:t.s, sub:t.n, right:`<span class="tv num"><b>${price(t.p)}</b><small class="${t.c > 0 ? 'up' : t.c < 0 ? 'dn' : ''}">${chg(t.c)}</small></span>` });
+const tokenRow = (t, i) => row({ lead:`<span class="rank num">${i + 1}</span>`, title:t.s, sub:t.n, right:`<span class="tv num"><b>${price(t.p)}</b><small class="${chgCls(t.c)}">${chg(t.c)}</small></span>`, attrs:`data-coin="${i}"`, nochev:true });
 const newsRow = (n, i) => row({ title:n.t, sub:`${n.tag} · ${n.ago}`, attrs:`data-news="${i}"` });
+/* живая цена BTC: строка как в «Акциях» — название, «обновлено N мин назад», цена и изменение за сутки в цвете */
+const liveChg = (suf = '') => `<small class="${chgCls(live24())}" data-live="chg" data-suf="${suf}">${chg(live24())}${suf}</small>`;
+const priceRow = () => row({ tile:'btc', cls:'c-btc', title:'Биткоин', sub:`<span data-ago>${ago()}</span>`, right:`<span class="tv num"><b data-live="price">${usd(LIVE)}</b>${liveChg(' за сутки')}</span>`, attrs:'data-go="market"' });
+
+/* карточка кошелька — как в Wallet: градиент по источнику, крупный баланс, источник; только просмотр */
+const WKIND = { manual:['wallet','введён вручную'], exchange:['lock','биржа · только чтение'], address:['btc','адрес · только чтение'], sand:['spark','виртуальные деньги'] };
+function wcard(w) {
+  const [ic, kind] = WKIND[w.kind], d = w.kind === 'sand' ? S.capital - SAND_CAP : 0;
+  const sub = w.kind === 'sand' ? (d ? `${sgn(d)} с начала · без настоящих денег` : 'без настоящих денег · те же расчёты')
+    : w.kind === 'exchange' ? `<span data-ago>${ago()}</span>` : w.kind === 'address' ? `${String(w.btc).replace('.', ',')} BTC по цене сейчас` : 'для расчёта суммы';
+  return `<button class="wcard w-${w.kind} press" data-wallet="${w.id}" aria-label="${w.name}: ${usd(w.bal)}, ${kind}">
+    <span class="wtop"><span class="wic">${ico(ic)}</span><b>${w.name}</b><span class="wkind">${kind}</span></span>
+    ${sw('w' + w.id, w.bal, usd(w.bal), 'wbal num')}
+    <span class="wsub">${sub}</span></button>`;
+}
+const chipB = (label, attrs = '', cls = '') => `<button class="chip press ${cls}" ${attrs}>${label}</button>`;
+const qa = (icon, label, attrs) => `<button class="qa press" ${attrs}><span class="qai">${ico(icon)}</span><span class="qal">${label}</span></button>`;
 
 /* ---------- экраны первого уровня ---------- */
 const VIEWS = {
-  today:{t:'Сегодня', i:'home', d:0}, scen:{t:'Сценарии', i:'fanic', d:0}, journal:{t:'Журнал', i:'book', d:0},
-  sum:{t:'Решение на неделю', d:1, tab:'today', up:'today'}, digest:{t:'Итоги недели', d:1, tab:'today', up:'today'},
-  archive:{t:'Архив прогнозов', d:1, tab:'scen', up:'scen'},
-  profile:{t:'Профиль', d:1, tab:'today', up:'today'}, alerts:{t:'Оповещения', d:2, tab:'today', up:'profile'},
-  assistant:{t:'Ассистент', d:2, tab:'today', up:'profile'},
+  home:{t:'Главная', i:'home', d:0}, market:{t:'Рынок', i:'chart', d:0}, journal:{t:'Журнал', i:'book', d:0},
+  sum:{t:'Расчёт на неделю', d:1, tab:'home', up:'home'}, digest:{t:'Итоги недели', d:1, tab:'home', up:'home'},
+  archive:{t:'Архив прогнозов', d:1, tab:'market', up:'market'},
+  profile:{t:'Профиль', d:1, tab:'home', up:'home'}, alerts:{t:'Оповещения', d:2, tab:'home', up:'profile'},
+  assistant:{t:'Ассистент', d:2, tab:'home', up:'profile'},
 };
-const TABS = ['today','scen','journal'];
+const TABS = ['home','market','journal'];
+const lastResult = () => modeJ().find(j => j.result);
 
+/* «С чего начать»: 4 шага, пока путь не пройден; следующий шаг — единственная нажимаемая строка */
+function coach() {
+  const J = modeJ().filter(j => !j.demo), res = J.some(j => j.result);
+  const steps = [
+    ['Добавьте баланс', S.capital > 0, 'data-sheet="addwallet"', 'сколько денег вы выделили на биткоин'],
+    ['Посмотрите расчёт на неделю', S.seenSum, 'data-go="sum"', 'при какой сумме сильное падение обойдётся примерно в ваш лимит'],
+    ['Запишите решение', J.length > 0, 'data-go="sum"', 'даже «пропускаю неделю» — это решение'],
+    ['Посмотрите, как оно сыграло', res, S.sandbox ? 'data-act="sandff"' : 'data-go="journal"', S.sandbox ? 'в песочнице итог можно посмотреть сразу' : `итог придёт ${dShort(7)}`],
+  ];
+  if (S.demo || steps.every(s => s[1])) return '';
+  const next = steps.findIndex(s => !s[1]), done = steps.filter(s => s[1]).length;
+  const dot = (i, ok, cur) => `<span class="stp${ok ? ' ok' : ''}${cur ? ' cur' : ''}">${ok ? ico('check') : i + 1}</span>`;
+  return panel('С чего начать', grp(steps.map(([t, ok, a, s], i) => i === next
+    ? row({ lead:dot(i, ok, true), title:t, sub:s, attrs:a, extra:'next' })
+    : row({ lead:dot(i, ok), title:t, extra:ok ? 'done' : 'todo' }))), 'coach', `<small>${done} из 4</small>`);
+}
 function feedItems() {
-  const items = [];
-  if (planOver()) items.push(row({ tile:'shield', cls:'c-rd', title:`План от ${S.plan.date} вне лимита`, sub:`при сильном падении потеряет ${usd(planBad())}, лимит ${usd(S.limit)}`, attrs:'data-go="sum"' }));
+  const items = [], J = modeJ();
+  if (planOver()) items.push(row({ tile:'shield', cls:'c-or', title:`План от ${S.plan.date} больше лимита`, sub:`при сильном падении потеря около ${usd(planBad())}, а лимит ${usd(S.limit)}`, attrs:'data-go="sum"' }));
   activeAlerts().forEach(a => items.push(row({ tile:a.icon, cls:a.cls, title:a.title, sub:a.means, attrs:`data-alert="${a.id}"`, extra:'cl' })));
-  const due = S.journal.find(j => j.due);
-  if (due) items.push(row({ tile:'clock', cls:'c-gy', title:`Разобрать решение ${due.date}`, sub:'займёт пару минут', attrs:`data-review="${due.id}"` }));
-  items.push(row({ tile:'cal', cls:'c-gy', title:'Итоги недели 11–18 окт.', sub:'план, диапазон модели и оповещения', attrs:'data-go="digest"' }));
+  const due = J.find(j => j.due);
+  if (due) items.push(row({ tile:'clock', cls:'c-gy', title:`Как сыграло решение ${due.date}`, sub:'внесите сумму — остальное посчитаем сами', attrs:`data-review="${due.id}"` }));
+  if (S.sandbox && J.some(j => j.pending)) items.push(row({ tile:'spark', cls:'c-bl', title:'Итог можно посмотреть сразу', sub:'в песочнице считаем на данных прошлой недели', attrs:'data-act="sandff"' }));
+  const r = lastResult();
+  if (r) items.push(row({ tile:'cal', cls:'c-gy', title:'Итоги недели', sub:r.result.amt ? (r.limitOk ? 'решение в пределах лимита' : 'потеря больше лимита') : 'неделя пропущена', attrs:'data-go="digest"' }));
   return items;
 }
-function vToday() {
-  const c = calc(), m = M(), items = feedItems();
-  const asset = `<button class="asset press" data-sheet="data">${ico('btc')}BTC · 7 дней${chev}</button>`;
-  return `<div class="hide-m">${topbar('Сегодня', 'суббота, 18 октября', `<div class="tbr">${sandTag()}${asset}${ava()}</div>`)}</div>
-  <div class="phonebar hide-d">${asset}<div class="tbr">${sandTag()}${ava()}</div></div>
-  <div class="cols stretch">
-    <section class="card herocard glow main-col">
-      ${heroBlock(c, 'sum')}
-      ${btn('Решение на неделю', 'data-go="sum"', 'w pill')}
-      <p class="fine c disc">${DISC}</p>
+function coreCard() {
+  if (S.capital <= 0) return `<section class="card herocard glow core">
+    <div class="lbl2">Сумма в пределах лимита ${hint('sum')}</div><div class="hero2">Добавьте баланс</div>
+    <p class="cap">Введите, сколько денег вы выделили на биткоин, — и мы посчитаем, сколько можно держать, чтобы плохая неделя не вышла за ваш лимит.</p>
+    ${btn('Добавить кошелёк', 'data-sheet="addwallet"', 'w pill')}</section>`;
+  return `<section class="card herocard glow core">${heroBlock(calc(), 'sum')}
+    ${btn('Открыть расчёт', 'data-go="sum"', 'w pill')}
+    <p class="fine c disc">${DISC}</p></section>`;
+}
+function vHome() {
+  const items = feedItems();
+  const cards = S.sandbox ? wcard({ id:'sand', kind:'sand', name:'Песочница', bal:S.capital })
+    : S.wallets.length ? S.wallets.map(wcard).join('')
+    : `<button class="wcard w-empty press" data-sheet="addwallet"><span class="wtop"><span class="wic">${ico('plus')}</span><b>Добавьте кошелёк</b></span><span class="wsub">Только просмотр: введите баланс сами или подключите биржу на чтение</span></button>`;
+  const acts = S.sandbox
+    ? [qa('calc', 'Посчитать', 'data-go="sum"'), qa('cal', 'Итог', modeJ().some(j => j.pending) ? 'data-act="sandff"' : 'data-go="digest"'), qa('sync', 'Сбросить', 'data-act="sandreset"'), qa('wallet', 'Реальный', 'data-act="sandtog"')]
+    : [qa('plus', 'Добавить', 'data-sheet="addwallet"'), qa('calc', 'Посчитать', 'data-go="sum"'), qa('spark', 'Без денег', 'data-act="sandtog"'), qa('swap', 'Биржа', 'data-act="toex"')];
+  return `${topbar('Главная', todayLong(), `<div class="tbr">${sandTag()}${ava()}</div>`)}
+  <div class="cols">
+    <section class="stackv main-col">
+      <div class="wstack">${cards}</div>
+      ${!S.sandbox && S.wallets.length > 1 ? `<p class="fine wtot">Всего для расчёта: <b class="num">${usd(walletsTotal())}</b></p>` : ''}
+      ${grp([priceRow()])}
+      <div class="qas">${acts.join('')}</div>
+      ${coreCard()}
     </section>
-    ${panel('Что изменилось', grp(items))}
-  </div>
-  <button class="card weekcard press hide-m" data-go="scen">
-    <span class="wh"><span class="rt"><b>Неделя по модели</b><small>где цена BTC через 7 дней в 8 сценариях из 10</small></span><span class="wr num">${S.noSignal ? 'не считаем' : `${usd(m.lo)} – ${usd(m.hi)}`}</span>${chev}</span>
-    ${fanSVG(false, 'wide')}
-    ${trio()}
-    <span class="fine c">Доли из 20 000 смоделированных недель. ${DISC}</span>
-  </button>
-  <div class="cols hide-m">
-    ${panel('20 крупнейших монет', `<div class="tcols">${grp(TOKENS.slice(0, 10).map(tokenRow))}${grp(TOKENS.slice(10).map((t, i) => tokenRow(t, i + 10)))}</div>`, 'main-col', '<small>цена · за 24 ч · демо</small>')}
-    <div class="stackv">
-      ${panel('Новости', grp(NEWS.map(newsRow)), '', '<small>демо, заголовки условные</small>')}
-      ${fgCard()}
-    </div>
-  </div>
-  <div class="hide-d">${grp([row({ glyph:'chart', title:'Рынок', sub:`индекс страха и жадности ${M().fg} · 20 крупнейших монет · новости`, attrs:'data-sheet="market"' })])}</div>`;
+    <section class="stackv">
+      ${coach()}
+      ${items.length ? panel('Что изменилось', grp(items)) : ''}
+      ${panel('Новости простыми словами', grp(NEWS.slice(0, 3).map(newsRow)), '', '<small>демо</small>')}
+      ${grp([row({ glyph:'chart', title:'Рынок и прогнозы', sub:'диапазон на неделю, 20 монет, все новости', attrs:'data-go="market"' })])}
+    </section>
+  </div>`;
 }
 
-function vScen() {
+function vMarket() {
   const m = M(), F = FACTORS(), cur = F[S.fseg] ? S.fseg : 'down', f = fresh();
   const draw = !fanDrawn; fanDrawn = true;
   const list = F[cur].map(x => row({ tile:x.icon, cls:x.cls, title:x.t, sub:`${x.s}<br>${x.src}${x.at ? ' · ' + x.at : ''}`, right: x.p ? dots(x.p) : '', attrs:`data-factor="${x.id}"` }));
-  const left = `
-    <section class="card scencard main-col">
-      ${S.noSignal ? `<div class="notice">${ico('info')}<span><b>Модель сейчас молчит.</b> Данные с бирж пришли не полностью. Ниже — последний расчёт от 17 окт.</span></div>` : ''}
-      <div class="hero-r num">${usd(m.lo)} – ${usd(m.hi)}</div>
-      <p class="cap">где цена через 7 дней в 8 сценариях из 10 · по модели</p>
-      ${fanSVG(draw)}
-      ${trio()}
-      <p class="fine c">Доли из 20 000 смоделированных недель. Куда пойдёт цена, модель не знает. ${DISC}</p>
-      ${btn('Рассчитать под мой лимит', 'data-go="sum" data-veil="1"', 'w pill c-self')}
-    </section>`;
-  const right = `
+  const coins = `<div class="chips coins">${chipB(`${ico('btc')}BTC`, 'aria-pressed="true"', 'on')}${chipB('ETH <small>скоро</small>', 'data-act="soon"')}${chipB('SOL <small>скоро</small>', 'data-act="soon"')}</div>`;
+  return `${topbar('Рынок', `<span data-ago>${ago()}</span>`, `<div class="tbr">${sandTag()}${ava()}</div>`)}
+  ${coins}
+  <div class="cols">
+    <section class="stackv main-col">
+      <section class="card pricecard">
+        <span class="pch"><span class="cat c-btc">${ico('btc')}</span><span class="rt"><b>Биткоин</b><small>цена в долларах</small></span></span>
+        <span class="pbig num" data-live="price">${usd(LIVE)}</span>
+        <span class="pchg num">${liveChg(' за сутки')}</span>
+        ${sparkSVG()}
+        <span class="fine">30 дней · демо-данные</span>
+      </section>
+      <section class="card scencard">
+        ${S.noSignal ? `<div class="notice">${ico('info')}<span><b>Модель сейчас молчит.</b> Данные с бирж пришли не полностью. Ниже — последний расчёт от вчера.</span></div>` : ''}
+        <div class="lbl2">Где может быть цена через неделю ${hint('range')}</div>
+        <div class="hero-r num">${usd(m.lo)} – ${usd(m.hi)}</div>
+        <p class="cap">в 8 случаях из 10 по ${term('model', 'модели')} · рассчитано ${f.t}</p>
+        <div class="chips c hz">${chipB('7 дней', 'aria-pressed="true"', 'sm on')}${chipB('30 дней · скоро', 'data-act="soon"', 'sm')}</div>
+        ${fanSVG(draw)}
+        ${trio()}
+        <p class="fine c">Доли из 20 000 ${term('scen', 'смоделированных недель')}. Куда пойдёт цена, модель не знает. ${DISC}</p>
+        ${btn('Рассчитать под мой лимит', 'data-go="sum" data-veil="1"', 'w pill c-self')}
+      </section>
+    </section>
     <section class="stackv">
       ${grp([
-        row({ title:'Сильное падение', sub:'столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(m.bad)}`, vc:'dn' }),
+        row({ title:`Сильное падение ${hint('bad')}`, sub:'столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(m.bad)}`, vc:'dn' }),
         row({ title:'Состояние рынка', val:regime(), attrs:'data-sheet="regime"' }),
-        row({ title:'Индекс страха и жадности', sub:'настроение рынка, вне нашей модели', val:`${m.fg} · ${fgLabel(m.fg)}`, attrs:'data-sheet="fg"' }),
-        row({ title:'Данные и модель', val:`<i class="fd ${f.c}"></i>${f.t.replace('обновлено ', '')}`, attrs:'data-sheet="data"' }),
+        row({ title:'Индекс страха и жадности', sub:'настроение рынка, в расчёт не входит', val:`${m.fg} · ${fgLabel(m.fg)}`, attrs:'data-sheet="fg"' }),
+        row({ title:'Данные и модель', val:`<i class="fd ${f.c}"></i>${f.t}`, attrs:'data-sheet="data"' }),
       ])}
       ${sec('Что повышает и снижает риск')}
       ${seg('fseg', cur, [['down', `Повышают · ${F.down.length}`], ['up', `Снижают · ${F.up.length}`], ['unk', `Вне модели · ${F.unk.length}`]])}
       ${grp(list)}
       <p class="fine">Это вклад в расчёт модели, а не причина движения цены.</p>
       ${sec('Что изменит картину')}
-      ${grp([...CHANGERS().map(x => row({ title:x.t, sub:x.s, attrs:`data-changer="${x.id}"` })), row({ title:'Расчёт действует до', val:'25 окт., 09:30' })])}
+      ${grp([...CHANGERS().map(x => row({ title:x.t, sub:x.s, attrs:`data-changer="${x.id}"` })), row({ title:'Расчёт действует до', val:`${dShort(7)}, 09:30` })])}
       ${grp([
         row({ title:'Что если…', sub:'гипотетические сценарии', right:'<span class="pro">подписка</span>', attrs:'data-sheet="whatif"' }),
         row({ title:'Архив и точность модели', sub:'10 из 12 недель в диапазоне · промахи не удаляем', attrs:'data-go="archive"' }),
       ])}
-    </section>`;
-  return `${topbar('Сценарии', 'BTC · 7 дней · рассчитано 09:30', '')}<div class="cols">${left}${right}</div>`;
+    </section>
+  </div>
+  <div class="cols">
+    ${panel('20 крупнейших монет', `<div class="tcols">${grp(TOKENS.slice(0, 10).map(tokenRow))}${grp(TOKENS.slice(10).map((t, i) => tokenRow(t, i + 10)))}</div>`, 'main-col', '<small>цена · за сутки · демо</small>')}
+    <div class="stackv">
+      ${panel('Новости простыми словами', grp(NEWS.map(newsRow)), '', '<small>демо</small>')}
+      ${fgCard()}
+    </div>
+  </div>`;
 }
 
 function hypBlock() {
   const H = [['range','Цена постоит'],['up','Рост'],['down','Падение'],['unk','Не знаю']], C = [[1,'низкая'],[2,'средняя'],[3,'высокая']];
   return `<div class="hyp ${S.hypOpen ? 'open' : ''}">
-    <button class="row tap press hyph" data-act="hyp" aria-expanded="${S.hypOpen}"><span class="rt"><b>Добавить свою гипотезу</b><small>${S.hyp || S.conf ? [H.find(h => h[0] === S.hyp)?.[1], C.find(c => c[0] === S.conf)?.[1] && 'уверенность ' + C.find(c => c[0] === S.conf)[1]].filter(Boolean).join(' · ') : 'необязательно, запишется в журнал'}</small></span><span class="chev rot">${ico('chev')}</span></button>
+    <button class="row tap press hyph" data-act="hyp" aria-expanded="${S.hypOpen}"><span class="rt"><b>Ваше мнение о неделе</b><small>${S.hyp || S.conf ? [H.find(h => h[0] === S.hyp)?.[1], C.find(c => c[0] === S.conf)?.[1] && 'уверенность ' + C.find(c => c[0] === S.conf)[1]].filter(Boolean).join(' · ') : 'необязательно · через неделю сравним с тем, что было'}</small></span><span class="chev rot">${ico('chev')}</span></button>
     ${S.hypOpen ? `<div class="hypb">
       <label class="flab">Что думаете о неделе?</label>
       <div class="chips">${H.map(([k, t]) => `<button class="chip ${S.hyp === k ? 'on' : ''}" data-hyp="${k}">${t}</button>`).join('')}</div>
-      <label class="flab">Уверенность</label>
+      <label class="flab">Насколько уверены</label>
       <div class="chips">${C.map(([k, t]) => `<button class="chip ${S.conf === k ? 'on' : ''}" data-conf="${k}">${t}</button>`).join('')}</div>
       <div class="inp"><input data-in="note" placeholder="Заметка для себя" value="${esc(S.note)}" enterkeyhint="done" aria-label="Заметка"></div>
     </div>` : ''}
@@ -390,10 +516,10 @@ const limChip = p => { const v = Math.max(10, Math.round(S.capital * p)); return
 function calcForm(inSheet) {
   const c = calc();
   return `<div class="calcf">
-    <div class="field"><label for="fCap">Баланс</label><div class="inp"><span>$</span><input id="fCap" inputmode="decimal" enterkeyhint="done" data-in="cap" value="${S.capital}"></div></div>
-    <div class="field"><label for="fLim">Готовы потерять за неделю</label><div class="inp"><span>$</span><input id="fLim" inputmode="decimal" enterkeyhint="done" data-in="lim" value="${S.limit}"></div>
+    <div class="field"><label for="fCap">${S.sandbox ? 'Виртуальный баланс' : 'Баланс'}${!S.sandbox && S.wallets.length ? ` · в кошельках ${usd(walletsTotal())}` : ''}</label><div class="inp"><span>$</span><input id="fCap" inputmode="decimal" enterkeyhint="done" data-in="cap" value="${S.capital}"></div></div>
+    <div class="field"><label for="fLim">Готовы потерять за неделю ${hint('limit')}</label><div class="inp"><span>$</span><input id="fLim" inputmode="decimal" enterkeyhint="done" data-in="lim" value="${S.limit}"></div>
       <div class="chips">${LIM_PCTS.map(limChip).join('')}</div></div>
-    <details class="more2" ${S.moreOpen || S.stop || S.fee || S.slip || S.pos ? 'open' : ''}><summary>Дополнительно: продажа и комиссии</summary>
+    <details class="more2" ${S.moreOpen || S.stop || S.fee || S.slip || S.pos ? 'open' : ''}><summary>Для опытных: продажа и комиссии</summary>
       <div class="field"><label for="fStop">Продам, если цена опустится до</label><div class="inp"><span>$</span><input id="fStop" inputmode="decimal" enterkeyhint="done" data-in="stop" value="${S.stop}" placeholder="не задано"></div></div>
       <div class="two">
         <div class="field"><label for="fFee">Комиссия биржи</label><div class="inp"><input id="fFee" inputmode="decimal" enterkeyhint="done" data-in="fee" value="${S.fee}" placeholder="0,1"><span>%</span></div></div>
@@ -409,9 +535,9 @@ const calcRes = c => c.none ? `<span>Без позиции</span><small>${c.reas
 /* из чего получилась сумма: что ввёл пользователь → какой взят риск → что вышло */
 function breakdown(c) {
   const rows = [
-    row({ title:'Баланс', sub:'вы ввели', val:usd(S.capital) }),
-    row({ title:'Готовы потерять за неделю', sub:`${limPct()}${S.limitAuto ? ', по умолчанию' : ''}`, val:usd(S.limit) }),
-    row({ title:'Сильное падение сейчас', sub:'по модели: столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(c.base)}`, vc:'dn' }),
+    row({ title:S.sandbox ? 'Виртуальный баланс' : 'Баланс', sub:S.sandbox ? 'песочница, без настоящих денег' : S.wallets.length ? 'из ваших кошельков' : 'вы ввели', val:usd(S.capital) }),
+    row({ title:`Готовы потерять за неделю ${hint('limit')}`, sub:`${limPct()}${S.limitAuto ? ', по умолчанию' : ', задано вами'}`, val:usd(S.limit) }),
+    row({ title:`Сильное падение сейчас ${hint('bad')}`, sub:'по модели: столько в среднем теряет цена в 1 неделю из 10', val:`−${pct1(c.base)}`, vc:'dn' }),
   ];
   if (c.stopD) rows.push(row({ title:`Продадите при ${usd(num(S.stop))}`, sub:'падение для расчёта не больше этого', val:`−${pct1(c.stopD)}` }));
   if (c.costRate) rows.push(row({ title:'Комиссии и разница цены', sub:'на вход и выход', val:`+${pct1(c.costRate)}` }));
@@ -419,10 +545,22 @@ function breakdown(c) {
   if (c.pos) rows.push(row({ title:'Уже есть в BTC', val:`−${usd(c.pos)}` }));
   return panel('Как посчитали', `${grp(rows)}<p class="fine">Сумма меняется вместе с риском рынка: чем сильнее возможное падение, тем она меньше.</p>`, 'how');
 }
+/* решение на неделю: один вопрос, три понятных варианта, одна главная кнопка */
+function decisionBlock(c) {
+  const P = [
+    ['plan', 'Сохранить сумму как план', c.none ? 'сейчас недоступно: расчёт ненадёжен' : `запомним ${usd(c.sum)} и через неделю покажем, как бы это сыграло`],
+    ['watch', 'Пока только смотрю', 'сообщим, если сумма заметно изменится'],
+    ['skip', 'Пропускаю неделю', 'это тоже решение — через неделю сравним'],
+  ];
+  const pick = c.none && S.pick === 'plan' ? 'watch' : S.pick;
+  return `${sec('Что решили на эту неделю?')}
+    <div class="picks" role="radiogroup" aria-label="Что решили на эту неделю">${P.map(([k, t, s]) => `<button class="pick press ${pick === k ? 'on' : ''}" role="radio" aria-checked="${pick === k}" data-pick="${k}" ${c.none && k === 'plan' ? 'disabled' : ''}><span class="rt">${t}<small>${s}</small></span><span class="ck"></span></button>`).join('')}</div>`;
+}
 function vSum() {
-  const c = calc(), m = M(), ok = !c.none, veil = S.veil && ok;
-  const toEx = S.sandbox ? btn('Записать в песочницу', `data-act="sandrec" ${veil ? 'disabled' : ''}`, 'link') : btn(`Перейти к бирже-партнёру${chev}`, `data-act="toex" ${ok && !veil ? '' : 'disabled aria-describedby="noex"'}`, 'link');
-  return `${navbar('Решение на неделю', 'today', S.sandbox ? 'песочница · без реальных денег' : '')}
+  const c = calc(), ok = !c.none, veil = S.veil && ok;
+  const second = S.sandbox ? btn('Попробовать на реальных деньгах', 'data-act="sandtog"', 'link')
+    : btn(`Перейти на биржу-партнёр${chev}`, `data-act="toex" ${ok && !veil ? '' : 'disabled aria-describedby="noex"'}`, 'link');
+  return `${navbar('Расчёт на неделю', 'home', S.sandbox ? 'песочница · виртуальные деньги' : `на ${dShort(0)} – ${dShort(7)}`)}
   <div class="cols">
     <section class="stackv main-col">
       <div class="veilwrap">
@@ -436,82 +574,101 @@ function vSum() {
           <button class="btn link press hide-d" data-sheet="calc">Изменить</button>
         </div></div>` : ''}
       </div>
-      ${grp([
-        row({ title:'Изменить баланс и лимит', sub:`${usd(S.capital)} · ${usd(S.limit)}${S.stop ? ' · продажа' : ''}${S.fee || S.slip ? ' · комиссии' : ''}`, attrs:'data-sheet="calc"', extra:'hide-d' }),
-      ])}
-      <div class="acts">
-        ${btn('Сохранить план', `data-act="saveplan" ${veil ? 'disabled' : ''}`)}
-        <div class="pair">${btn('Наблюдать', 'data-act="watch"', 'd')}${btn('Пропустить', 'data-act="skip"', 'd')}</div>
-        ${toEx}
-      </div>
-      ${ok ? '' : `<p class="fine c" id="noex">«Перейти к бирже» недоступно: расчёт ненадёжен.</p>`}
+      ${grp([row({ title:'Изменить баланс и лимит', sub:`${usd(S.capital)} · ${usd(S.limit)}${S.stop ? ' · продажа' : ''}${S.fee || S.slip ? ' · комиссии' : ''}`, attrs:'data-sheet="calc"', extra:'hide-d' })])}
+      ${decisionBlock(c)}
       ${hypBlock()}
-      <p class="fine c">${DISC} Любой выбор попадёт в журнал.</p>
+      <div class="acts">
+        ${btn(S.sandbox ? 'Записать в песочницу' : 'Записать в журнал', `data-act="decide" ${veil ? 'disabled' : ''}`)}
+        ${second}
+      </div>
+      ${ok ? '' : `<p class="fine c" id="noex">Переход на биржу недоступен: расчёт ненадёжен.</p>`}
+      <p class="fine c">${DISC}</p>
     </section>
     <section class="card hide-m">${sec('Изменить расчёт')}${calcForm(false)}</section>
   </div>`;
 }
 
+/* итоги недели — «как сыграло ваше решение» простыми словами */
 function vDigest() {
-  const al = activeAlerts();
-  return `${navbar('Итоги недели', 'today', '11–18 октября')}
+  const j = lastResult(), pend = modeJ().find(x => x.pending || x.due);
+  if (!j) return `${navbar('Итоги недели', 'home')}
+    <div class="cols"><section class="card herocard glow main-col">
+      <div class="lbl2">Как сыграло ваше решение</div><div class="hero2">Пока нечего подводить</div>
+      <p class="cap">${pend ? `Итог решения от ${pend.date} будет ${pend.reviewDate || dShort(7)}.` : 'Итог появится через неделю после первого решения.'}${S.sandbox ? ' В песочнице его можно посмотреть сразу.' : ' Хотите увидеть сразу — попробуйте в песочнице.'}</p>
+      ${S.sandbox ? (pend ? btn('Показать итог сразу', 'data-act="sandff"', 'w pill') : btn('Посчитать неделю', 'data-go="sum"', 'w pill')) : btn('Попробовать без денег', 'data-act="sandtog"', 'w pill')}
+    </section><section class="stackv"></section></div>`;
+  const r = j.result, lim = j.limit || S.limit, held = r.amt > 0, al = activeAlerts();
+  const head = held ? (j.limitOk ? 'В пределах лимита' : 'Больше лимита') : 'Неделя без сделки';
+  const text = held
+    ? `Вы держали ${usd(r.amt)} в биткоине. В худший момент недели это было ${sgn(-r.worst)}, к концу недели ${sgn(r.end)}. Ваш лимит — ${usd(lim)}.`
+    : `Вы не держали биткоин. Если бы держали ${usd(r.hypo)}, в худший момент было бы ${sgn(-r.worst)}, к концу недели ${sgn(r.end)}.`;
+  const tags = `${j.sand ? ' · песочница' : ''}${j.demo ? ' · пример' : ''}`;
+  return `${navbar('Итоги недели', 'home', `${j.demo ? `неделя после ${j.date}` : WEEK.label()}${tags}`)}
   <div class="cols">
     <section class="stackv main-col">
       <div class="card herocard glow">
-        <div class="lbl2">Неделя 11–18 окт. · план ${usd(3200)}</div>
-        <div class="hero2">План в лимите</div>
-        <p class="cap num">Для суммы плана наибольшая потеря за неделю ${usd(77)} при лимите ${usd(S.limit)}. Сколько было в сделке на самом деле, знаете только вы.</p>
-        ${btn('Внести и разобрать', 'data-review="1"', 'w pill')}
+        <div class="lbl2">Как сыграло ваше решение</div>
+        <div class="hero2 ${held ? (j.limitOk ? 'up' : 'dn') : ''}">${head}</div>
+        <p class="cap num">${text}</p>
+        ${held && j.limitOk ? '<p class="was">Плохая неделя уложилась в вашу границу.</p>' : ''}
+        ${btn('Посчитать следующую неделю', 'data-go="sum"', 'w pill')}
       </div>
-      ${panel('План и факт', grp([
-        row({ title:'Сумма в пределах лимита на 11 окт.', val:usd(3200) }),
-        row({ title:'Было в сделке', sub:'ещё не внесено', val:'—' }),
-        row({ title:'Наибольшая потеря за неделю', sub:'для суммы плана, от 11 окт. до самой низкой цены', val:`−${usd(77)}`, vc:'dn' }),
-      ]))}
-      ${panel('Что показала модель', grp([
-        row({ title:'Диапазон на 11 окт.', sub:'8 сценариев из 10', val:`${usd(80900)} – ${usd(91800)}` }),
-        row({ title:'Цена 18 окт.', val:usd(PRICE) }),
-        row({ title:'Итог', val:'в диапазоне', vc:'up' }),
-        row({ title:'Сильное падение по модели', sub:'изменилось за неделю', val:S.alertOn ? '−8,7% → −10,9%' : '−8,7%' }),
+      ${panel('Цифры недели', grp([
+        row({ title:'Было в биткоине', sub:j.invested != null && j.kind !== 'plan' ? 'по вашим данным' : 'по плану', val:usd(r.amt || 0) }),
+        row({ title:'Худший момент недели', sub:held ? 'если бы продали в самой низкой точке' : `для ${usd(r.hypo)}`, val:sgn(-r.worst), vc:'dn' }),
+        row({ title:'Конец недели', val:sgn(r.end), vc:r.end >= 0 ? 'up' : 'dn' }),
+        row({ title:`Ваш лимит ${hint('limit')}`, val:usd(lim) }),
       ]))}
       <p class="fine c">${DISC}</p>
     </section>
     <section class="stackv">
-      ${panel('Оповещения за неделю', al.length ? grp(al.map(a => row({ tile:a.icon, cls:a.cls, title:a.title, sub:`${a.date} · ${a.means}`, attrs:`data-alert="${a.id}"` }))) : '<div class="empty">Оповещений не было.</div>')}
-      ${panel('Как менялась сумма', `<div class="card chartcard">${planChart()}</div>`)}
+      ${panel('Что было с ценой', grp([
+        row({ title:'В начале недели', val:usd(WEEK.from) }),
+        row({ title:'Самая низкая', val:`${usd(WEEK.low)} · −${pct1(WEEK.worst)}` }),
+        row({ title:'Сейчас', val:`${usd(WEEK.to)} · +${pct1(WEEK.chg)}` }),
+        row({ title:`Диапазон модели ${hint('range')}`, sub:`${usd(WEEK.lo)} – ${usd(WEEK.hi)}`, val:'цена внутри', vc:'up' }),
+      ]))}
+      ${al.length ? panel('Оповещения за неделю', grp(al.map(a => row({ tile:a.icon, cls:a.cls, title:a.title, sub:a.means, attrs:`data-alert="${a.id}"` })))) : ''}
+      ${S.sandbox ? '' : panel('Как менялась сумма', `<div class="card chartcard">${planChart()}</div>`)}
     </section>
   </div>`;
 }
 
 function jTitle(j) {
-  const amt = usd(j.invested ?? j.plan ?? 0);
-  return j.kind === 'ex' ? `Переход к бирже ${j.ex || 'А'} · ${amt}` : j.kind === 'save' ? `План сохранён · ${amt}` : j.kind === 'sand' ? `Песочница · ${amt}` : j.kind === 'watch' ? 'Наблюдение' : 'Пропуск';
+  const amt = usd(j.invested || j.plan || 0);
+  return j.kind === 'ex' ? `Переход на биржу · ${amt}` : j.kind === 'plan' ? `План · ${amt}` : j.kind === 'watch' ? 'Только смотрю' : 'Пропуск недели';
 }
 function jStatus(j) {
   if (j.due || j.pending) return `<span class="st wait" aria-label="ждём неделю">${ico('clock')}</span>`;
-  if (j.kind === 'skip' || j.kind === 'watch') return '';
+  if (!j.result || !j.result.amt) return '';
   return `<span class="st ${j.limitOk ? 'ok' : 'no'}" aria-label="${j.limitOk ? 'лимит соблюдён' : 'лимит превышен'}">${ico(j.limitOk ? 'check' : 'close')}</span>`;
 }
+function jSub(j) {
+  const tags = (j.sand ? mini('песочница', 't-bl') : '') + (j.demo ? mini('пример', 't-gy') : '');
+  const s = j.pending ? `итог ${j.reviewDate || dShort(7)}` : j.due ? 'внесите сумму — посчитаем итог' : j.kind === 'watch' ? 'сообщим, если сумма изменится'
+    : j.result ? (j.result.amt ? `худший момент ${sgn(-j.result.worst)}, конец недели ${sgn(j.result.end)}` : 'неделя без сделки') : j.inRange === false ? 'цена вне диапазона' : 'цена в диапазоне';
+  return `${tags}${j.date} · ${s}${j.note ? ' · ' + esc(j.note) : ''}`;
+}
 function vJournal() {
-  const icon = { ex:'swap', save:'bookmark', watch:'eye', skip:'close', sand:'spark' };
-  const due = S.journal.find(j => j.due);
-  const rows = S.journal.filter(j => !j.due).map(j => row({ tile:icon[j.kind] || 'swap', cls:j.kind === 'sand' ? 'c-bl' : 'c-gy', title:jTitle(j),
-    sub:`${j.date} · ${j.pending ? `разбор ${j.reviewDate || '25 окт.'}` : j.kind === 'watch' ? 'сообщим, если сумма изменится' : `${j.inRange === false ? 'вне диапазона' : 'цена в диапазоне'}${j.note ? ' · ' + j.note : ''}`}`,
-    right:jStatus(j), attrs:`data-jitem="${j.id}"` }));
-  const sand = S.sandbox ? `<div class="card herocard"><div class="lbl2">Виртуальный портфель</div><div class="hero2 num">${usd(S.capital)}</div><p class="cap">Те же расчёты, но без реальных денег. Итог можно посмотреть сразу — на прошлой неделе.</p>${S.journal.some(j => j.kind === 'sand' && j.pending) ? btn('Показать итог недели', 'data-act="sandff"', 'w pill') : ''}</div>` : '';
+  const icon = { ex:'swap', plan:'bookmark', watch:'eye', skip:'close' };
+  const due = S.journal.find(j => j.due && !!j.sand === S.sandbox);
+  const rows = S.journal.filter(j => !j.due).map(j => row({ tile:icon[j.kind] || 'swap', cls:j.sand ? 'c-bl' : 'c-gy', title:jTitle(j), sub:jSub(j), right:jStatus(j), attrs:`data-jitem="${j.id}"` }));
+  const res = realJ().filter(j => j.result && j.result.amt), okN = res.filter(j => j.limitOk).length;
+  const sd = S.capital - SAND_CAP, sp = modeJ().some(j => j.pending);
+  const sand = S.sandbox ? `<div class="card herocard"><div class="lbl2">Виртуальный баланс</div>${sw('jsand', S.capital, usd(S.capital), 'hero2 num')}<p class="cap">${sd ? `${sgn(sd)} с начала. ` : ''}Те же расчёты, но без настоящих денег. Итог можно посмотреть сразу — на данных прошлой недели.</p>${sp ? btn('Показать итог недели', 'data-act="sandff"', 'w pill') : ''}</div>` : '';
   const dec = `<div class="cols">
     <section class="stackv main-col">
       ${sand}
-      ${due ? `<div class="card duecard"><div class="rt"><b>Пора разобрать ${due.date}</b><small>${jTitle(due)} · займёт пару минут</small></div>${btn('Разобрать', `data-review="${due.id}"`)}</div>` : ''}
-      ${rows.length ? grp(rows) : `<div class="empty">Здесь будут ваши решения. Любой выбор на экране суммы — даже «Пропустить» — попадёт сюда, и через неделю мы вместе его разберём.</div>`}
-      <p class="fine">«Пропуск» — полноценное решение, а не провал. Его тоже разбираем через неделю.</p>
+      ${due ? `<div class="card duecard"><div class="rt"><b>Как сыграло решение ${due.date}</b><small>${jTitle(due)} · пара минут</small></div>${btn('Посмотреть', `data-review="${due.id}"`)}</div>` : ''}
+      ${rows.length ? grp(rows) : `<div class="empty">Здесь будут ваши решения. Любой выбор на экране расчёта — даже «Пропускаю неделю» — попадёт сюда, а через неделю мы покажем, как он сыграл.</div>`}
+      <p class="fine">Записи песочницы и примера помечены и не попадают в график и статистику.</p>
     </section>
     <section class="stackv">
       ${panel('Как менялась сумма', `<div class="card chartcard">${planChart()}</div>`)}
-      ${grp([row({ glyph:'cal', title:'Итоги недели', sub:'11–18 окт.', attrs:'data-go="digest"' }), row({ glyph:'shield', title:'Лимит соблюдён', sub:'недели, когда план укладывался в лимит', val:'11 из 12' }), row({ glyph:'pie', title:'Точность модели', sub:'архив прогнозов', attrs:'data-go="archive"' })])}
+      ${grp([row({ glyph:'cal', title:'Итоги недели', sub:WEEK.label(), attrs:'data-go="digest"' }), res.length ? row({ glyph:'shield', title:'Лимит соблюдён', sub:'недели, когда потеря укладывалась в лимит', val:`${okN} из ${res.length}` }) : '', row({ glyph:'pie', title:'Точность модели', sub:'архив прогнозов', attrs:'data-go="archive"' })])}
     </section>
   </div>`;
-  return `${topbar('Журнал', 'ваши решения и сделки')}
+  return `${topbar('Журнал', 'ваши решения и сделки', `<div class="tbr">${sandTag()}${ava()}</div>`)}
     <div class="jseg">${seg('jseg', S.jseg, [['dec', 'Решения'], ['trades', 'Сделки']])}</div>
     <div class="segbody">${S.jseg === 'trades' ? vTrades() : dec}</div>`;
 }
@@ -520,22 +677,23 @@ function vTrades() {
     <section class="stackv main-col">
       <p class="lead">Загрузите историю сделок — посчитаем результат после комиссий.</p>
       ${grp([
-        row({ glyph:'export', title:'Файл с историей сделок', sub:'выгрузка с любой биржи ПВТ', attrs:'data-act="csv"' }),
-        row({ glyph:'lock', title:'Подключить биржу-партнёра', sub:'только чтение истории', attrs:'data-act="api"' }),
+        row({ glyph:'export', title:'Файл с историей сделок', sub:'выгрузка с любой биржи — резидента ПВТ', attrs:'data-act="csv"' }),
+        row({ glyph:'lock', title:'Подключить биржу-партнёр', sub:'только чтение истории', attrs:'data-act="api"' }),
       ])}
       <p class="fine">Доступ с правом торговли или вывода не примем: права проверяем при подключении.</p>
     </section>
     <section class="stackv">${sec('Что покажет разбор')}${grp([row({ title:'Результат после комиссий', sub:'а не только «попал в диапазон»' }), row({ title:'Самое глубокое снижение', sub:'сколько терял по пути' }), row({ title:'Повторяющиеся привычки', sub:'всегда с числом сделок' })])}</section>
   </div>`;
   const gross = TRADES.reduce((a,t) => a + t.gross, 0), fees = TRADES.reduce((a,t) => a + t.fee, 0), net = gross - fees;
-  let eq = S.capital, peak = eq, dd = 0; TRADES.forEach(t => { eq += t.gross - t.fee; peak = Math.max(peak, eq); dd = Math.min(dd, (eq - peak) / peak); });
+  const cap = S.capital || 5000;
+  let eq = cap, peak = eq, dd = 0; TRADES.forEach(t => { eq += t.gross - t.fee; peak = Math.max(peak, eq); dd = Math.min(dd, (eq - peak) / peak); });
   const hot = TRADES.filter(t => t.hot), hotLoss = hot.filter(t => t.gross - t.fee < 0).length;
   const pct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1).replace('.', ',') + '%';
   return `<div class="cols">
     <section class="stackv main-col">
       <div class="card herocard">
         <div class="lbl2">${TRADES.length} сделок · июль – сентябрь</div>
-        <div class="hero2 num">${pct(net / S.capital)}</div>
+        <div class="hero2 num">${pct(net / cap)}</div>
         <p class="cap num">после комиссий · ${usd(net)}</p>
       </div>
       ${grp([row({ title:'До комиссий', val:usd(gross) }), row({ title:'Комиссии', val:`−${usd(fees)}`, vc:'dn' }), row({ title:'После комиссий', val:usd(net) })])}
@@ -545,9 +703,7 @@ function vTrades() {
     <section class="stackv">
       ${sec('Замеченная привычка')}
       ${grp([row({ tile:'stack', cls:'c-or', title:'Сделки при высокой плате за плечо', sub:`${hotLoss} из ${hot.length} закрыты в минус · сделок мало, вывод предварительный`, val:`${hotLoss}/${hot.length}` })])}
-      ${sec('Дисциплина')}
-      ${grp([row({ title:'Лимит соблюдён', sub:`недели с потерей в рамках ${usd(S.limit)}`, val:'11 из 12' })])}
-      <p class="fine">Результаты видите только вы, в рекламе мы их не используем. Источник: ${S.trades === 'api' ? 'биржа-партнёр А, только чтение' : 'файл с историей сделок'}.</p>
+      <p class="fine">Результаты видите только вы, в рекламе мы их не используем. Источник: ${S.trades === 'api' ? `${EXCH['1']}, только чтение` : 'файл с историей сделок'}.</p>
       ${btn('Отключить источник', 'data-act="untrades"', 'd')}
     </section>
   </div>`;
@@ -555,7 +711,7 @@ function vTrades() {
 
 function vArchive() {
   const ok = WEEKS.filter(Boolean).length;
-  return `${navbar('Архив прогнозов', 'scen')}
+  return `${navbar('Архив прогнозов', 'market')}
   <div class="cols">
     <section class="card herocard main-col">
       <div class="lbl2">12 недель</div>
@@ -574,22 +730,24 @@ function vArchive() {
 }
 
 function vProfile() {
-  return `${navbar('Профиль', 'today')}
+  const sw2 = (ic, t, s, act, on) => `<div class="row"><span class="gl">${ico(ic)}</span><span class="rt"><b>${t}</b><small>${s}</small></span>${toggle(`data-act="${act}"`, on, t)}</div>`;
+  return `${navbar('Профиль', 'home')}
   <div class="cols even">
     <section class="stackv">
-      <div class="card acct"><span class="ava big">${initial()}</span><div class="rt"><b>${S.email ? esc(S.email) : 'Демо-аккаунт'}</b><small>Бесплатный тариф · ${S.country === 'BY' ? 'Беларусь' : 'другая страна'}</small></div></div>
+      <div class="card acct"><span class="ava big">${initial()}</span><div class="rt"><b>${S.email ? esc(S.email) : 'Без почты'}</b><small>Бесплатный тариф${S.country ? ' · ' + (S.country === 'BY' ? 'Беларусь' : 'другая страна') : ''}</small></div></div>
       ${grp([
-        row({ glyph:'wallet', title:'Баланс', sub:S.sandbox ? 'виртуальный, песочница' : 'сколько на бирже или выделено', val:usd(S.capital), attrs:'data-sheet="calc"' }),
+        row({ glyph:'wallet', title:S.sandbox ? 'Виртуальный баланс' : 'Баланс для расчёта', sub:S.sandbox ? 'песочница' : S.wallets.length ? `кошельков: ${S.wallets.length}` : 'кошельков пока нет', val:usd(S.capital), attrs:'data-sheet="calc"' }),
         row({ glyph:'shield', title:'Готовы потерять за неделю', sub:S.limitAuto ? '6% баланса, по умолчанию' : 'задано вами', val:usd(S.limit), attrs:'data-sheet="limit"' }),
-        `<div class="row"><span class="gl">${ico('spark')}</span><span class="rt"><b>Песочница</b><small>виртуальные ${usd(SAND_CAP)}, те же расчёты</small></span>${toggle('data-act="sandtog"', S.sandbox, 'Песочница')}</div>`,
-        `<div class="row"><span class="gl">${ico('globe')}</span><span class="rt"><b>Страна</b><small>от неё зависят биржи</small></span><select data-sel="country" aria-label="Страна"><option value="BY" ${S.country === 'BY' ? 'selected' : ''}>Беларусь</option><option value="OT" ${S.country === 'OT' ? 'selected' : ''}>Другая</option></select></div>`,
+        sw2('spark', 'Песочница', `виртуальные ${usd(SAND_CAP)}, свои баланс и лимит`, 'sandtog', S.sandbox),
+        `<div class="row"><span class="gl">${ico('globe')}</span><span class="rt"><b>Страна</b><small>от неё зависят биржи</small></span><select data-sel="country" aria-label="Страна"><option value="" ${!S.country ? 'selected' : ''}>не выбрана</option><option value="BY" ${S.country === 'BY' ? 'selected' : ''}>Беларусь</option><option value="OT" ${S.country === 'OT' ? 'selected' : ''}>Другая</option></select></div>`,
+        row({ glyph:'user', title:'Почта', sub:'чтобы данные не потерялись', val:S.email ? '' : 'не указана', attrs:'data-sheet="email"' }),
         row({ glyph:'lock', title:'Подключённые биржи', sub:'только чтение', val:S.trades ? '1' : 'нет', attrs:'data-act="totrades"' }),
       ])}
       ${grp([
         row({ glyph:'bell', title:'Оповещения', sub:'события, частота, тихие часы', attrs:'data-go="alerts"' }),
         row({ glyph:'logo', title:'Ассистент', sub:aiLive() ? 'подключён: ' + esc(modelName()) : 'демо-режим', attrs:'data-go="assistant"' }),
         row({ glyph:'info', title:'Как читать прогноз', sub:'4 правила', attrs:'data-sheet="rules"' }),
-        row({ glyph:'shield', title:'Условия использования', sub:S.consent ? `приняты ${new Date(S.consent.at).toLocaleDateString('ru-RU')}` : 'не приняты', attrs:'data-sheet="terms"' }),
+        row({ glyph:'shield', title:'Условия использования', sub:S.consent ? `приняты ${new Date(S.consent.at).toLocaleDateString('ru-RU')}` : 'примете перед переходом на биржу', attrs:'data-sheet="terms"' }),
         row({ glyph:'wallet', title:'Подписка', val:'бесплатно' }),
       ])}
     </section>
@@ -598,8 +756,10 @@ function vProfile() {
       <div class="seg" role="radiogroup" aria-label="Тема">${[['system', 'Системная'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([k, t]) => `<button class="${THEME === k ? 'on' : ''}" role="radio" aria-checked="${THEME === k}" data-theme-set="${k}">${t}</button>`).join('')}</div>
       ${sec('Демо прототипа')}
       ${grp([
-        `<div class="row"><span class="gl">${ico('stack')}</span><span class="rt"><b>Рынок перегрет</b><small>включает оповещения и меняет сценарии</small></span>${toggle('data-act="alerttog"', S.alertOn, 'Рынок перегрет')}</div>`,
-        `<div class="row"><span class="gl">${ico('info')}</span><span class="rt"><b>Нет данных</b><small>модель молчит, сумма — «Без позиции»</small></span>${toggle('data-act="nosig"', S.noSignal, 'Нет данных')}</div>`,
+        sw2('book', 'Пример с историей', 'чужие решения с меткой «пример» и оповещение — для показа', 'demotog', S.demo),
+        sw2('stack', 'Рынок неспокойный', 'включает оповещения и меняет сценарии', 'alerttog', S.alertOn),
+        sw2('info', 'Нет данных', 'модель молчит, сумма — «Без позиции»', 'nosig', S.noSignal),
+        row({ glyph:'clock', title:'Перемотать неделю', sub:'реальные решения получат итог', attrs:'data-act="ffweek"', nochev:true }),
         row({ glyph:'bell', title:'Показать пример оповещения', attrs:'data-act="testbanner"', nochev:true }),
         row({ glyph:'sync', title:'Начать заново', attrs:'data-act="reset"', nochev:true }),
       ])}
@@ -611,12 +771,12 @@ function vAlerts() {
   const t = (k, b, s, ic, locked) => `<div class="row"><span class="gl">${ico(ic)}</span><span class="rt"><b>${b}</b><small>${s}</small></span>${toggle(`data-tog="${k}"`, locked || S.set[k], b, locked)}</div>`;
   return `${navbar('Оповещения', 'profile')}
   <div class="cols even">
-    <section class="stackv">${sec('События')}
-      ${grp([t('funding','Многие торгуют в долг в расчёте на рост','плата за плечо выше, чем в 90% дней года','stack'), t('oi','Позиции растут, цена стоит','на фьючерсах копится плечо','layers'), t('vol','Цена стала колебаться сильнее','ожидаемый размах цены +15% и больше','wave'), t('flow','Переводы BTC на биржи','крупные переводы с кошельков на биржи','flow'), t('', 'План вышел за лимит', 'нельзя выключить: это суть продукта', 'shield', true)])}
+    <section class="stackv">${sec('О чём сообщать')}
+      ${grp([t('funding','Многие покупают на заёмные деньги','плата за плечо выше, чем в 90% дней года','stack'), t('oi','Ставок на фьючерсах больше, а цена стоит','копятся заёмные деньги','layers'), t('vol','Цена стала колебаться сильнее','ожидаемый размах цены +10% и больше','wave'), t('flow','Переводы BTC на биржи','крупные переводы с кошельков на биржи','flow'), t('', 'План вышел за лимит', 'нельзя выключить: это суть продукта', 'shield', true)])}
     </section>
     <section class="stackv">${sec('Как приходят')}
       ${grp([
-        row({ glyph:'bell', title:'В приложении и уведомлением на телефон', sub:'на почту — только итоги недели' }),
+        row({ glyph:'bell', title:'Внутри приложения', sub:'на главной, в «Что изменилось»; на почту — только итоги недели' }),
         `<div class="row"><span class="gl">${ico('clock')}</span><span class="rt"><b>Не чаще в день</b><small>частые сигналы толкают к лишним сделкам</small></span><div class="chips">${[1,2,3].map(n => `<button class="chip sm ${S.set.maxDay === n ? 'on' : ''}" data-max="${n}">${n}</button>`).join('')}</div></div>`,
         t('quiet','Тихие часы','с 23:00 до 8:00 не беспокоим','moon'),
       ])}
@@ -645,69 +805,57 @@ function vAssistant() {
   </div>`;
 }
 
-/* ---------- до входа: стартовый экран и онбординг ---------- */
+/* ---------- до входа: стартовый экран и три шага реального режима ---------- */
 let landReveal = false;
 function vLanding() {
   return `<div class="land${landReveal ? ' reveal' : ''}">
     <div class="lcenter">
       <span class="appic big" style="--d:0ms">${ico('logo')}</span>
       <h1 style="--d:80ms">Crypto Analytics</h1>
-      <p class="lsub" style="--d:160ms">Посчитаем сумму в биткоине под ваш лимит потерь за неделю.</p>
-      <div class="lcta" style="--d:240ms">${btn('Войти', 'data-act="login"')}</div>
+      <p class="lsub" style="--d:160ms">Узнайте, сколько можно потерять на биткоине за плохую неделю, — до того, как рисковать деньгами.</p>
+      <div class="lfeat" style="--d:240ms">
+        ${row({ tile:'wallet', cls:'c-bl', title:'Баланс и цена биткоина', sub:'в одном месте, только просмотр' })}
+        ${row({ tile:'shield', cls:'c-gr', title:'Ваша граница на неделю', sub:'сумма, при которой плохая неделя обойдётся примерно в выбранный вами лимит' })}
+        ${row({ tile:'spark', cls:'c-vi', title:'Тренировка без денег', sub:`виртуальные ${usd(SAND_CAP)}, без регистрации` })}
+      </div>
+      <div class="lcta" style="--d:320ms">${btn('Попробовать без денег', 'data-act="sandstart"')}${btn('У меня есть деньги на бирже', 'data-act="login"', 'd')}</div>
+      <p class="fine c" style="--d:400ms">Мы не биржа: не храним деньги и не совершаем сделки.</p>
     </div>
   </div>`;
 }
-const TERMS_VERSION = '2026-10-18';
+const TERMS_VERSION = '2026-10-20';
 const consentRow = (k, text) => `<button class="cons press ${S.cons[k] ? 'on' : ''}" data-consent="${k}" role="checkbox" aria-checked="${!!S.cons[k]}"><span class="box2">${ico('check')}</span><span>${text}</span></button>`;
+const emailOk = v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v).trim());
 function vOnb(dir) {
-  const n = 5, dotsH = `<div class="dots">${Array.from({length:n}, (_, i) => `<i class="${i <= S.onb ? 'on' : ''}"></i>`).join('')}</div>`;
-  const back = to => `<button class="btn link press" data-onb="${to}" data-back>Назад</button>`;
+  const n = 3, dotsH = `<div class="dots">${Array.from({length:n}, (_, i) => `<i class="${i <= S.onb ? 'on' : ''}"></i>`).join('')}</div>`;
+  const back = to => to === 'land' ? `<button class="btn link press" data-act="toland">${S.fromSand ? 'Вернуться в песочницу' : 'Назад'}</button>` : `<button class="btn link press" data-onb="${to}" data-back>Назад</button>`;
   let body;
   if (S.onb === 0) body = `${dotsH}
-    <h1>Сколько готовы выделить на биткоин?</h1>
-    <p class="p">Например, сколько у вас на бирже. Деньги остаются у вас, мы только считаем.</p>
+    <h1>Сколько денег вы выделили на биткоин?</h1>
+    <p class="p">Можно примерно — например, сколько у вас на бирже. Это только число для расчёта: деньги остаются у вас.</p>
     <div class="hero num c" id="onbCap">${usd(S.capital)}</div>
-    <div class="chips c">${[1000,5000,10000].map(v => `<button class="chip num ${S.capital === v && !S.customCap ? 'on' : ''}" data-cap="${v}">${usd(v)}</button>`).join('')}<button class="chip ${S.customCap ? 'on' : ''}" data-cap="custom">другая</button></div>
+    <div class="chips c">${[500,1000,5000].map(v => `<button class="chip num ${S.capital === v && !S.customCap ? 'on' : ''}" data-cap="${v}">${usd(v)}</button>`).join('')}<button class="chip ${S.customCap ? 'on' : ''}" data-cap="custom">другая</button></div>
     ${S.customCap ? `<div class="inp"><span>$</span><input inputmode="decimal" enterkeyhint="done" placeholder="например, 3 000" data-in="customcap" aria-label="Свой баланс"></div>` : ''}
-    <div class="limline"><span class="rt"><b>Готовы потерять за неделю: <span class="num" id="onbLim">${usd(S.limit)}</span></b><small id="onbPct">${limPct()} · потолок потерь, сумму считаем от него</small></span><button class="btn link press inl" data-act="limedit">${S.limEdit ? 'Готово' : 'Изменить'}</button></div>
-    ${S.limEdit ? `<div class="chips c">${LIM_PCTS.map(limChip).join('')}</div>` : ''}
-    ${btn('Продолжить', 'data-onb="1"')}
-    <button class="btn link press" data-act="sandbox">Попробовать без денег</button>`;
+    ${btn('Дальше', 'data-onb="1"')}${back('land')}`;
   else if (S.onb === 1) body = `${dotsH}
-    <h1>Где вы живёте?</h1>
-    <p class="p">От страны зависят биржи, на которые мы можем вас направить. Для Беларуси это только резиденты ПВТ.</p>
-    <button class="pick press ${S.country === 'BY' ? 'on' : ''}" data-country="BY"><i>BY</i><span class="rt">Беларусь<small>биржи — резиденты ПВТ</small></span><span class="ck"></span></button>
-    <button class="pick press ${S.country === 'OT' ? 'on' : ''}" data-country="OT"><i>${ico('globe')}</i><span class="rt">Другая страна<small>партнёры по законам страны</small></span><span class="ck"></span></button>
-    ${btn('Продолжить', 'data-onb="2"')}${back(0)}`;
-  else if (S.onb === 2) body = `${dotsH}
-    <h1>Четыре вещи до начала</h1>
-    ${grp([
-      row({ glyph:'pie', title:'Вероятность — не прогноз', sub:'Это доля смоделированных недель, а не обещание.' }),
-      row({ glyph:'wave', title:'Широкий диапазон — неопределённость', sub:'Значит, модель не уверена.' }),
-      row({ glyph:'close', title:'Пропустить — нормально', sub:'Пропустить неделю — тоже решение. Мы его запишем.' }),
-      row({ glyph:'info', title:'Иногда модель молчит', sub:'Это честнее, чем угадывать.' }),
-    ])}
-    ${btn('Понятно', 'data-onb="3"')}${back(1)}`;
-  else if (S.onb === 3) body = `${dotsH}
-    <h1>Вход по почте</h1>
-    <p class="p">Паспорт и карта нам не нужны: деньги и проверка личности остаются на бирже.</p>
-    <div class="inp"><input type="email" placeholder="you@example.com" value="${esc(S.email)}" data-in="email" autocomplete="email" autocapitalize="none" enterkeyhint="go" aria-label="Почта"></div>
-    <p class="fine c">Продолжая, вы соглашаетесь на обработку почты и записей о решениях. Деньги и токены мы не храним.</p>
-    ${btn('Продолжить', 'data-onb="4"')}${back(2)}`;
+    <h1>Какая потеря за неделю для вас терпима?</h1>
+    <p class="p">Это ваш лимит — граница, а не цель. От него считаем сумму. Поменять можно в любой момент.</p>
+    <div class="hero num c" id="limBig">${usd(S.limit)}</div>
+    <div class="chips c">${LIM_PCTS.map(limChip).join('')}</div>
+    <p class="fine c" id="onbPct">${limPct()} · обычно выбирают 3–10%</p>
+    ${btn('Дальше', 'data-onb="2"')}${back(0)}`;
   else body = `${dotsH}
-    <h1>Последнее: ваше согласие</h1>
-    <p class="p">Решения о сделках принимаете вы. Мы считаем и показываем, но не торгуем за вас и не отвечаем за результат.</p>
-    <div class="consent">
-      ${consentRow('model', 'Я понимаю, что Crypto Analytics показывает расчёты по модели. Это не инвестиционный совет и не прогноз цены.')}
-      ${consentRow('loss', 'Я понимаю, что могу потерять все деньги, которые потрачу на токены. Решения о сделках принимаю сам, и сервис не отвечает за мои убытки.')}
-    </div>
-    <button class="btn link press" data-sheet="terms">Прочитать условия использования</button>
-    <button class="btn w press" data-onb="done" ${S.cons.model && S.cons.loss ? '' : 'disabled'}>Принять и начать</button>${back(3)}`;
-  return `<div class="onb"><div class="box ${dir || ''}">${S.sandbox ? `<span class="tag t-bl c-self">${ico('spark')}Песочница · виртуальные ${usd(SAND_CAP)}</span>` : ''}${body}</div></div>`;
+    <h1>Почта — чтобы данные не потерялись</h1>
+    <p class="p">Пришлём итоги недели. Паспорт и карта не нужны: деньги и проверка личности остаются на бирже.</p>
+    <div class="inp" id="emBox"><input type="email" placeholder="you@example.com" value="${esc(S.email)}" data-in="email" autocomplete="email" autocapitalize="none" enterkeyhint="go" aria-label="Почта" aria-describedby="emErr"></div>
+    <p class="fine c err" id="emErr" role="alert"></p>
+    ${btn('Готово', 'data-act="onbfinish"')}
+    <button class="btn link press" data-act="onblater">Позже</button>${back(1)}`;
+  return `<div class="onb"><div class="box ${dir || ''}">${body}</div></div>`;
 }
 
 /* ---------- листы ---------- */
-let RV = null, WI = null;
+let RV = null, WI = null, EXB = null;
 const WHATIF = {
   price:{ t:'Цена −10%', f:s => s * 0.86 }, vol:{ t:'Размах цены больше', f:s => s / 1.25 }, lim:{ t:'Лимит на треть ниже', f:s => s * 0.67 },
   hor:{ t:'Срок 3 дня', f:s => s * 1.5 }, stop:{ t:'Продажа раньше', f:s => s * 1.2 }, src:{ t:'Нет данных с бирж', none:true },
@@ -715,14 +863,16 @@ const WHATIF = {
 const means = t => `<div class="means"><small>Что это значит для вас</small><p>${t}</p></div>`;
 const okBtn = (t = 'Понятно') => btn(t, 'data-act="close"', 'd');
 const SHEETS = {
+  term(k) { const g = GLOSS[k];
+    return `<span class="tag t-bl">${ico('info')}Простыми словами</span><h2 class="l">${g[0]}</h2><p class="body">${g[1]}</p>${okBtn()}`; },
   alert(id) { const a = ALERTS.find(x => x.id === id), c = calc();
-    return `<span class="tag t-or">${ico(a.icon)}Риск выше обычного · ${a.date}</span>
+    return `<span class="tag t-or">${ico(a.icon)}Рынок неспокойный · сегодня</span>
       <h2 class="l">${a.title}</h2>
       ${means(a.means)}
       ${c.none ? '' : `<div class="money"><small>Сумма в пределах лимита</small><b class="num">${usd(calmSum())} → ${usd(c.sum)}</b></div>`}
       ${grp(a.kv.map(k => row({ title:k[0], val:k[1] })))}
-      <p class="body">${a.note}</p>
-      <p class="fine">${DISC} Источники: ${a.src}.</p>
+      <p class="body">${a.note} ${a.id === 'funding' ? term('lev', 'Что такое плечо?') : term('dvol', 'Что такое размах?')}</p>
+      <p class="fine">Источники: ${a.src}.</p>
       ${btn('Открыть расчёт', 'data-act="recalc"')}${okBtn()}`; },
   fg() { const v = M().fg;
     return `<h2 class="l">Индекс страха и жадности</h2>
@@ -734,23 +884,88 @@ const SHEETS = {
   changer(id) { const x = CHANGERS().find(c => c.id === id);
     return `<h2 class="l">${x.t}</h2>
       ${grp([row({ title:'Что это такое', sub:x.what })])}
-      ${means(`Если это случится, ${x.s}. Сумму в пределах лимита мы пересчитаем сами и пришлём оповещение.`)}
+      ${means(`Если это случится, ${x.s.replace(/^сейчас \d+ · /, '')}. Сумму в пределах лимита мы пересчитаем сами и сообщим на главной.`)}
       ${okBtn()}`; },
   news(i) { const n = NEWS[i];
     return `<span class="tag t-gy">${n.tag} · ${n.ago}</span><h2 class="l">${n.t}</h2>${means(n.means)}<p class="fine">Демо-лента: заголовок условный.</p>${okBtn()}`; },
-  market() { return `<h2 class="l">Рынок</h2>${fgCard()}${sec('Новости')}${grp(NEWS.map(newsRow))}${sec('20 крупнейших монет · цена · за 24 ч')}${grp(TOKENS.map(tokenRow))}<p class="fine">Демо: цены и заголовки условные.</p>${okBtn('Закрыть')}`; },
-  tokens() { return `<h2 class="l">20 крупнейших монет</h2><p class="fine">Цена и изменение за 24 часа · демо</p>${grp(TOKENS.map(tokenRow))}${okBtn('Закрыть')}`; },
-  exit() { const BY = S.country === 'BY';
-    return `<h2>Перед переходом на биржу</h2>
-      <div class="legal"><b>Можно потерять все деньги, потраченные на токены.</b> Токены — не средство платежа и не обеспечены государством. Потери бывают из-за резких скачков цены, сбоев и хищений.</div>
+  coin(i) { const t = TOKENS[i], btc = t.s === 'BTC';
+    return `<h2 class="l">${t.n} · ${t.s}</h2>
+      ${grp([row({ title:'Цена', val:price(t.p) }), row({ title:'За сутки', val:chg(t.c), vc:chgCls(t.c) }), row({ title:'Место по размеру рынка', val:`${i + 1} из 20` })])}
+      ${means(btc ? 'Для биткоина мы считаем сумму в пределах вашего лимита и диапазон на неделю.' : 'Расчёт суммы и диапазон для этой монеты — скоро. Сейчас модель проверена только на биткоине.')}
+      <p class="fine">Цены — демо.</p>
+      ${btc ? btn('Открыть расчёт', 'data-go="sum"') : ''}${okBtn(btc ? 'Закрыть' : 'Понятно')}`; },
+  /* кошельки — только просмотр: вручную, биржа на чтение, адрес на чтение */
+  addwallet() {
+    if (S.sandbox) return `<h2>Кошельки — для реального режима</h2><p class="body mut c">Сейчас включена песочница с виртуальными деньгами. Её баланс и записи останутся как есть.</p>${btn('Перейти в реальный режим', 'data-act="sandtog"')}${okBtn('Не сейчас')}`;
+    return `<h2>Добавить кошелёк</h2>
+      <p class="fine c">Только просмотр. Мы не храним деньги и не можем ими распоряжаться. ${term('wallet', 'Подробнее')}</p>
+      ${grp([
+        row({ tile:'wallet', cls:'c-gy', title:'Ввести баланс вручную', sub:'быстрее всего, без подключений', attrs:'data-sheet="manual"' }),
+        row({ tile:'lock', cls:'c-gr', title:'Подключить биржу-партнёр', sub:'ключ только на чтение — баланс обновляется сам', attrs:'data-act="api"' }),
+        row({ tile:'btc', cls:'c-btc', title:'Адрес биткоин-кошелька', sub:'смотрим баланс по адресу, только чтение', attrs:'data-sheet="addr"' }),
+      ])}
+      ${okBtn('Отмена')}`; },
+  manual() { return `<h2>Баланс вручную</h2>
+      <p class="fine c">Сколько денег вы выделили на биткоин — на бирже или отложено.</p>
+      <div class="inp"><span>$</span><input id="wNew" inputmode="decimal" enterkeyhint="done" placeholder="например, 1 000" aria-label="Баланс"></div>
+      <p class="fine c err" id="wErr" role="alert"></p>
+      ${btn('Добавить', 'data-act="manualadd"')}${okBtn('Отмена')}`; },
+  addr() { return `<h2>Адрес биткоин-кошелька</h2>
+      <p class="fine c">Адрес публичный: по нему видно только баланс. Доступа к деньгам он не даёт.</p>
+      <div class="inp"><input id="wAddr" placeholder="bc1q…" autocapitalize="none" autocomplete="off" aria-label="Адрес кошелька" value="bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"></div>
+      <p class="fine c err" id="wErr" role="alert"></p>
+      ${btn('Подключить на чтение', 'data-act="addrconnect"')}${okBtn('Отмена')}`; },
+  wallet(id) {
+    if (id === 'sand') return `<h2 class="l">Песочница</h2>${grp([row({ title:'Виртуальный баланс', val:usd(S.capital) }), row({ title:'С начала', val:sgn(S.capital - SAND_CAP), vc:S.capital >= SAND_CAP ? 'up' : 'dn' }), row({ title:'Лимит потерь', val:usd(S.limit) })])}
+      ${means('Деньги не настоящие. Записи песочницы помечены и не попадают в ваш реальный график и статистику.')}
+      ${btn('Сбросить до ' + usd(SAND_CAP), 'data-act="sandreset"', 'd')}${btn('Перейти в реальный режим', 'data-act="sandtog"')}`;
+    const w = S.wallets.find(x => x.id === id); if (!w) return okBtn();
+    const ro = w.kind !== 'manual';
+    return `<h2 class="l">${w.name}</h2><p class="body mut">${WKIND[w.kind][1]}</p>
+      ${ro ? grp([row({ title:'Баланс', val:usd(w.bal) }), w.btc ? row({ title:'В биткоинах', val:String(w.btc).replace('.', ',') + ' BTC' }) : '', row({ title:'Доступ', sub:'видим только баланс, переводы и сделки невозможны', val:'чтение' }), row({ title:'Обновлено', val:ago().replace('обновлено ', '') })])
+        : `<div class="field"><label for="wBal">Баланс</label><div class="inp"><span>$</span><input id="wBal" inputmode="decimal" enterkeyhint="done" data-in="wbal" data-w="${w.id}" value="${w.bal}"></div></div>`}
+      ${btn('Готово', 'data-act="close"')}${btn(ro ? 'Отключить' : 'Удалить кошелёк', `data-act="wdel" data-w="${w.id}"`, 'd')}`; },
+  /* перед биржей: страна и согласия — только здесь, на шаге к настоящим деньгам */
+  exit() {
+    if (!S.consent || !S.country) {
+      const ready = S.cons.model && S.cons.loss && S.country;
+      return `<h2>Перед переходом на биржу</h2>
+      <p class="fine c">Это шаг к настоящим деньгам, поэтому один раз спросим страну и согласие.</p>
+      ${sec('Где вы живёте?')}
+      <button class="pick press ${S.country === 'BY' ? 'on' : ''}" data-country="BY"><i>BY</i><span class="rt">Беларусь<small>биржи — резиденты ПВТ</small></span><span class="ck"></span></button>
+      <button class="pick press ${S.country === 'OT' ? 'on' : ''}" data-country="OT"><i>${ico('globe')}</i><span class="rt">Другая страна<small>партнёры по законам страны</small></span><span class="ck"></span></button>
+      <p class="fine">${term('pvt', 'Кто такие резиденты ПВТ?')}</p>
+      ${sec('Согласие')}
+      <div class="consent">
+        ${consentRow('model', 'Я понимаю: Crypto Analytics показывает расчёты по модели. Это не инвестиционный совет и не прогноз цены.')}
+        ${consentRow('loss', 'Я понимаю: цена может сильно упасть, и я могу потерять деньги, потраченные на токены, вплоть до всех. Решения о сделках принимаю сам.')}
+      </div>
+      <button class="btn link press" data-sheet="terms">Прочитать условия использования</button>
+      ${btn('Продолжить', `data-act="consentok" ${ready ? '' : 'disabled'}`)}${okBtn('Не сейчас')}`;
+    }
+    const BY = S.country === 'BY', c = calc();
+    return `<h2>Переход на биржу</h2>
+      <div class="legal"><b>Можно потерять все деньги, потраченные на токены.</b> Токены — не средство платежа и не обеспечены государством.</div>
       <div class="legal"><b>Как мы зарабатываем.</b> Биржа платит нам часть своей комиссии с ваших сделок. На расчёт суммы это не влияет.</div>
-      ${BY ? `<p class="fine">Биржи — резиденты ПВТ. Сумму и направление сделки вы вводите на бирже сами, мы их не передаём.</p>
+      ${BY ? `<p class="fine">Обе биржи — ${term('pvt', 'резиденты ПВТ')}. Названия появятся после подписания договора; список всех резидентов — на park.by. Подставим в форму ${c.none ? 'пустую сумму' : `сумму плана ≈ ${fmt(c.sum * USD_BYN)} BYN`} — её можно изменить, заявку отправляете вы.</p>
         ${grp([
-          row({ title:'Биржа-партнёр А', sub:'показывает возможную потерю рядом с формой заявки', attrs:'data-exgo="А"', extra:'exrow' }),
-          row({ title:'Биржа-партнёр Б', sub:'резидент ПВТ', attrs:'data-exgo="Б"', extra:'exrow' }),
+          row({ tile:'swap', cls:'c-gr', title:EXCH['1'], sub:'резидент ПВТ · показывает возможную потерю рядом с формой заявки', attrs:'data-exgo="1"', extra:'exrow' }),
+          row({ tile:'swap', cls:'c-gy', title:EXCH['2'], sub:'резидент ПВТ', attrs:'data-exgo="2"', extra:'exrow' }),
         ])}
         ${okBtn('Не сейчас')}`
       : `<p class="body">Для вашей страны партнёров пока нет. Расчёт и журнал работают без перехода.</p>${okBtn()}`}`; },
+  /* возврат с биржи: сколько внесли — чтобы журнал хранил факт, а не план */
+  exback() { const j = S.journal.find(x => x.id === EXB.id);
+    return `<h2>Сколько вы внесли на бирже?</h2>
+      <p class="fine c">Мы не видим вашу сделку. Запишем в журнал — через неделю посчитаем, как сыграло. Подключите биржу на чтение, и спрашивать не придётся.</p>
+      <div class="inp"><span>$</span><input id="exInv" inputmode="decimal" enterkeyhint="done" data-in="exinv" value="${EXB.inv}" aria-label="Сколько внесли"></div>
+      <div class="chips c">${j && j.plan ? `<button class="chip sm num" data-exinv="${j.plan}">как в плане · ${usd(j.plan)}</button>` : ''}<button class="chip sm" data-exinv="0">Не покупал</button></div>
+      ${btn('Записать', 'data-act="exsave"')}`; },
+  email() { return `<h2>Почта</h2>
+      <p class="fine c">Чтобы данные не потерялись и приходили итоги недели. Больше ни для чего.</p>
+      <div class="inp" id="emBox"><input type="email" placeholder="you@example.com" value="${esc(S.email)}" data-in="email" autocomplete="email" autocapitalize="none" aria-label="Почта" aria-describedby="emErr"></div>
+      <p class="fine c err" id="emErr" role="alert"></p>
+      ${btn('Сохранить', 'data-act="emailsave"')}${okBtn('Отмена')}`; },
   calc() { return `<h2>Изменить расчёт</h2>${calcForm(true)}${btn('Готово', 'data-act="close"')}`; },
   limit() { return `<h2>Готовы потерять за неделю</h2>
       <div class="hero num c" id="limBig">${usd(S.limit)}</div>
@@ -763,7 +978,7 @@ const SHEETS = {
     if (base.none) res = `<b>Без позиции</b><small>${base.reason}</small>`;
     else if (!w) res = `<b class="num">${usd(base.sum)}</b><small>выберите сценарий выше</small>`;
     else if (w.none) res = `<b class="num">${usd(base.sum)} → без позиции</b><small>без данных расчёт ненадёжен</small>`;
-    else res = `<b class="num">${usd(base.sum)} → ${usd(Math.min(S.capital, Math.round(w.f(base.sum))))}</b><small>потеря при сильном падении ≤ ${usd(WI === 'lim' ? Math.round(S.limit * 0.67) : S.limit)}</small>`;
+    else res = `<b class="num">${usd(base.sum)} → ${usd(Math.min(S.capital, Math.round(w.f(base.sum))))}</b><small>при сильном падении потеря в среднем около ${usd(WI === 'lim' ? Math.round(S.limit * 0.67) : S.limit)}</small>`;
     return `<span class="tag t-out">Гипотетически</span>
       <h2 class="l">Что если…</h2>
       <div class="chips">${Object.entries(WHATIF).map(([k, v]) => `<button class="chip sm ${WI === k ? 'on' : ''}" data-wi="${k}">${v.t}</button>`).join('')}</div>
@@ -778,11 +993,11 @@ const SHEETS = {
       ${okBtn()}`; },
   regime() { const cur = regimeKey();
     return `<h2 class="l">Состояние рынка</h2>${grp(Object.entries(REGIMES).map(([k, [t, s]]) => row({ title:t, sub:s, right:k === cur ? `<span class="st ok">${ico('check')}</span>` : '' })))}
-      <p class="fine">Состояние определяет модель по размаху цены, её направлению и ставкам с плечом. Когда напряжённо, диапазон шире, а сумма в пределах лимита меньше.</p>
+      <p class="fine">Состояние определяет модель по размаху цены, её направлению и покупкам на заёмные деньги. Когда неспокойно, диапазон шире, а сумма в пределах лимита меньше.</p>
       ${okBtn()}`; },
   data() { const f = fresh();
     return `<h2 class="l">Данные и модель</h2>
-      ${grp([row({ title:'Актив', val:'BTC к доллару, без плеча' }), row({ title:'Срок', sub:'другие сроки не подменяем ближайшим', val:'7 дней' }), row({ title:'Рассчитано', val:S.noSignal ? '17 окт., 09:30' : '18 окт., 09:30' }), row({ title:'Данные', sub:'Binance, Bybit, OKX, Deribit', val:`<i class="fd ${f.c}"></i>${f.t}` })])}
+      ${grp([row({ title:'Актив', val:'BTC к доллару, без плеча' }), row({ title:'Срок', sub:'другие сроки не подменяем ближайшим', val:'7 дней' }), row({ title:'Рассчитано', val:f.t }), row({ title:'Цена', sub:'Binance, Bybit, OKX, Deribit', val:`<i class="fd ${f.c}"></i>${ago().replace('обновлено ', '')}` })])}
       ${grp([row({ title:'Надёжность', sub:'10 из 12 недель в диапазоне модели', attrs:'data-go="archive"' }), row({ title:'Версия модели', val:'v0.4' })])}
       ${okBtn()}`; },
   rules() { return `<h2 class="l">Как читать прогноз</h2>${grp([
@@ -792,36 +1007,40 @@ const SHEETS = {
       row({ glyph:'info', title:'Иногда модель молчит', sub:'Это честнее, чем угадывать.' })])}
       ${okBtn()}`; },
   terms() { return `<h2 class="l">Условия использования</h2>
-      <p class="fine">Версия от 18.10.2026. Черновик для прототипа, текст нужно согласовать с юристом.</p>
+      <p class="fine">Версия от 20.10.2026. Черновик для прототипа, текст нужно согласовать с юристом.</p>
       ${grp([
         row({ glyph:'info', title:'Что такое сервис', sub:'Информационный и аналитический сервис. Показывает диапазоны и вероятности по модели, считает сумму в пределах вашего лимита. Не даёт инвестиционных советов и не прогнозирует цену.' }),
         row({ glyph:'shield', title:'Риски', sub:'Токены не являются средством платежа и не обеспечены государством. Цена может резко меняться, возможна потеря всех потраченных денег, а также потери из-за сбоев и хищений.' }),
         row({ glyph:'close', title:'Ответственность', sub:'Решения о сделках вы принимаете самостоятельно. Сервис не несёт ответственности за ваши убытки и упущенную выгоду, в том числе если вы опирались на расчёты, оповещения или ответы ассистента.' }),
-        row({ glyph:'lock', title:'Деньги и сделки', sub:'Мы не храним деньги и токены и не отправляем заявки. Сделки, деньги и проверка личности — на бирже-партнёре по её правилам.' }),
+        row({ glyph:'lock', title:'Деньги и сделки', sub:'Мы не храним деньги и токены и не отправляем заявки. Кошельки в приложении — только просмотр. Сделки, деньги и проверка личности — на бирже-партнёре по её правилам.' }),
         row({ glyph:'pie', title:'Модель может ошибаться', sub:'Прошлые результаты модели не гарантируют будущих. Промахи мы показываем в архиве.' }),
       ])}
       ${okBtn()}`; },
   jitem(id) { const j = S.journal.find(x => x.id === id); const H = { range:'цена постоит', up:'рост', down:'падение', unk:'не знаю' };
-    return `<h2 class="l">${jTitle(j)}</h2><p class="body mut">${j.date}</p>
-      ${grp([row({ title:'Сумма в пределах лимита', val:j.plan ? usd(j.plan) : '—' }), row({ title:'Лимит', val:usd(S.limit) }), row({ title:'Гипотеза', val:j.hyp ? H[j.hyp] : 'не указана' }), row({ title:'Уверенность', val:j.conf ? ['', 'низкая', 'средняя', 'высокая'][j.conf] : 'не указана' })])}
-      ${j.pending ? `<p class="fine">Разбор — ${j.reviewDate || '25 окт.'}. Напомним в ленте «Сегодня».</p>` : grp([row({ title:'Цена', val:j.inRange === false ? 'вне диапазона' : 'в диапазоне' }), j.invested != null ? row({ title:'Было в сделке', val:usd(j.invested) }) : ''])}
-      ${okBtn('Закрыть')}`; },
+    return `<h2 class="l">${jTitle(j)}</h2><p class="body mut">${j.date}${j.sand ? ' · песочница' : ''}${j.demo ? ' · пример' : ''}</p>
+      ${grp([row({ title:'Сумма в пределах лимита', val:j.plan ? usd(j.plan) : '—' }), row({ title:'Лимит', val:usd(j.limit || S.limit) }), row({ title:'Ваше мнение', val:j.hyp ? H[j.hyp] : 'не указано' }), row({ title:'Уверенность', val:j.conf ? ['', 'низкая', 'средняя', 'высокая'][j.conf] : 'не указана' })])}
+      ${j.pending ? `<p class="fine">Итог — ${j.reviewDate || dShort(7)}. Напомним на главной.</p>` : j.result ? grp([row({ title:'Было в биткоине', val:usd(j.result.amt) }), row({ title:'Худший момент недели', val:sgn(-j.result.worst), vc:'dn' }), row({ title:'Конец недели', val:sgn(j.result.end) })]) : ''}
+      ${j.result ? btn('Итоги недели', 'data-go="digest"', 'd') : ''}${okBtn('Закрыть')}`; },
+  /* «как сыграло решение»: пользователь вводит только сумму — потерю и лимит считаем сами */
   review() { const j = S.journal.find(x => x.id === RV.id), st = RV.step;
-    const pd = `<div class="dots sm">${[0,1,2,3,4].map(i => `<i class="${i <= st ? 'on' : ''}"></i>`).join('')}</div>`;
+    const pd = `<div class="dots sm">${[0,1,2].map(i => `<i class="${i <= st ? 'on' : ''}"></i>`).join('')}</div>`;
     const next = (label = 'Дальше') => btn(label, 'data-act="rvnext"');
     let b;
-    if (st === 0) b = `<h2>Цена осталась в диапазоне?</h2>${grp([row({ title:'План', val:`до ${usd(j.plan)}` }), row({ title:'Цена за неделю', val:'$84 900 → $86 530' }), row({ title:'Диапазон модели', val:'попали', vc:'up' })])}${next()}`;
-    else if (st === 1) b = `<h2>Сколько было в сделке на самом деле?</h2><div class="inp"><span>$</span><input inputmode="decimal" enterkeyhint="done" data-in="rvinv" value="${RV.inv}" placeholder="например, 3 000" aria-label="Сколько было в сделке"></div>
-      <div class="chips"><button class="chip ${RV.notIn ? 'on' : ''}" data-rv="notIn">Сделки не было</button></div>${next()}`;
-    else if (st === 2) b = `<h2>Потеря уложилась в ${usd(S.limit)}?</h2><div class="chips">${['Да','Нет'].map((t, i) => `<button class="chip ${RV.lim === i ? 'on' : ''}" data-rvlim="${i}">${t}</button>`).join('')}</div>${next()}`;
-    else if (st === 3) b = `<h2>Модель была слишком уверена?</h2><div class="chips">${['Нет','Да','Не знаю'].map((t, i) => `<button class="chip ${RV.conf === i ? 'on' : ''}" data-rvconf="${i}">${t}</button>`).join('')}</div>${next()}`;
-    else b = `<h2>Чего не хватило для решения?</h2><div class="inp"><input data-in="rvmiss" value="${esc(RV.miss)}" placeholder="необязательно" enterkeyhint="done" aria-label="Чего не хватило"></div>${next('Сохранить разбор')}`;
-    return `${pd}${b}<p class="fine c">Разбор ${j.date} · сумму вводите вы сами, позже можно подключить биржу только на чтение.</p>`; },
-  api() { const p = S.apiPerm, r = (k, t) => `<div class="row"><span class="gl">${ico(k === 'read' ? 'lock' : 'close')}</span><span class="rt"><b>${t}</b><small>${k === 'read' ? 'нужно для разбора' : 'должно быть выключено'}</small></span>${toggle(`data-perm="${k}"`, p[k], t)}</div>`;
-    return `<h2>Ключ доступа биржи-партнёра А</h2>
-      <p class="fine c">В демо можно выбрать, какие права «нашлись» у ключа при проверке.</p>
+    if (st === 0) b = `<h2>Сколько было в биткоине на самом деле?</h2>
+      <div class="inp"><span>$</span><input inputmode="decimal" enterkeyhint="done" data-in="rvinv" value="${RV.notIn ? '' : RV.inv}" placeholder="например, 3 000" aria-label="Сколько было в биткоине"></div>
+      <div class="chips c"><button class="chip ${RV.notIn ? 'on' : ''}" data-rv="notIn">Сделки не было</button></div>${next()}`;
+    else if (st === 1) { const t = resolve(Object.assign({}, j), RV.notIn ? 0 : num(RV.inv)), r = t.result, lim = j.limit || S.limit;
+      b = `<h2>${r.amt ? (t.limitOk ? 'Потеря уложилась в лимит' : 'Потеря больше лимита') : 'Неделя без сделки'}</h2>
+      ${grp([row({ title:'Было в биткоине', val:usd(r.amt) }), row({ title:'Худший момент недели', sub:'посчитали сами по цене', val:sgn(-r.worst), vc:'dn' }), row({ title:'Ваш лимит', val:usd(lim), right:r.amt ? `<span class="st ${t.limitOk ? 'ok' : 'no'}">${ico(t.limitOk ? 'check' : 'close')}</span>` : '' }), row({ title:'Цена осталась в диапазоне модели', val:'да', vc:'up' })])}
+      <label class="flab">Модель была слишком уверена? Необязательно</label>
+      <div class="chips">${['Нет','Да','Не знаю'].map((t2, i) => `<button class="chip ${RV.conf === i ? 'on' : ''}" data-rvconf="${i}">${t2}</button>`).join('')}</div>${next()}`; }
+    else b = `<h2>Чего не хватило для решения?</h2><div class="inp"><input data-in="rvmiss" value="${esc(RV.miss)}" placeholder="необязательно" enterkeyhint="done" aria-label="Чего не хватило"></div>${next('Сохранить и посмотреть итог')}`;
+    return `${pd}${b}<p class="fine c">Решение ${j.date} · сумму вводите вы, остальное считаем мы. С биржей на чтение спрашивать не будем.</p>`; },
+  api() { const p = S.apiPerm, r = (k, t) => `<div class="row"><span class="gl">${ico(k === 'read' ? 'lock' : 'close')}</span><span class="rt"><b>${t}</b><small>${k === 'read' ? 'нужно для баланса и разбора' : 'должно быть выключено'}</small></span>${toggle(`data-perm="${k}"`, p[k], t)}</div>`;
+    return `<h2>Ключ доступа: ${EXCH['1']}</h2>
+      <p class="fine c">Создайте на бирже ключ только на чтение и вставьте его сюда. В демо можно выбрать, какие права «нашлись» у ключа при проверке.</p>
       <div class="inp"><input value="ca_demo_7f3e…b21" readonly aria-label="Ключ доступа"></div>
-      ${grp([r('read', 'Чтение истории'), r('trade', 'Торговля'), r('withdraw', 'Вывод средств')])}
+      ${grp([r('read', 'Чтение баланса и истории'), r('trade', 'Торговля'), r('withdraw', 'Вывод средств')])}
       <div id="apiErr"></div>
       ${btn('Проверить и подключить', 'data-act="apiconnect"')}
       ${btn('Отмена', 'data-act="close"', 'd')}`; },
@@ -919,7 +1138,7 @@ const SYSTEM = `Ты — ассистент внутри приложения Cr
 
 Цифры модели сценариев можно пересказывать только как распределение исходов с их вероятностным смыслом, не превращая их в прогноз направления. Любой расчёт — это информация для пересчёта плана пользователя, а не рекомендация купить или продать. Если речь о покупке токенов пользователем из Беларуси, напоминай, что по закону это возможно только через биржи — резиденты ПВТ, и не советуй иностранные биржи. Не обещай доходность и не преуменьшай риск: токены могут потерять всю стоимость.
 
-Как устроен продукт: пользователь вводит баланс; сколько он готов потерять за неделю, по умолчанию 6% баланса, это можно поменять. Приложение показывает диапазон и вероятности движения BTC на 7 дней по 20 000 смоделированных недель. «Сильное падение» — средний результат 1 недели из 10 с самым сильным падением. «Сумма в пределах лимита» = сколько готов потерять ÷ сильное падение, но не больше баланса: если BTC за неделю сильно упадёт, пользователь потеряет в среднем около своего лимита, но бывает и больше. Сумма меняется, когда меняется риск рынка. Приложение присылает оповещения о росте риска (плата за плечо на фьючерсах, открытые позиции растут без роста цены, ожидаемый размах цены), ведёт журнал решений, итоги недели и разбирает сделки после комиссий. Есть песочница с виртуальными деньгами. Деньги, проверка личности и сделки — на бирже-партнёре, приложение их не хранит и заявки не отправляет.`;
+Как устроен продукт: пользователь вводит баланс; сколько он готов потерять за неделю, по умолчанию 6% баланса, это можно поменять. Приложение показывает диапазон и вероятности движения BTC на 7 дней по 20 000 смоделированных недель. «Сильное падение» — средний результат 1 недели из 10 с самым сильным падением. «Сумма в пределах лимита» = сколько готов потерять ÷ сильное падение, но не больше баланса: если BTC за неделю сильно упадёт, пользователь потеряет в среднем около своего лимита, но бывает и больше. Сумма меняется, когда меняется риск рынка. Приложение присылает оповещения о росте риска (плата за плечо на фьючерсах, открытые позиции растут без роста цены, ожидаемый размах цены), ведёт журнал решений, итоги недели и разбирает сделки после комиссий. Есть песочница с виртуальными $1 000 — лучший первый шаг для новичка. Кошельки в приложении — только просмотр (вручную или биржа/адрес только на чтение). Если человек новичок, объясни путь: песочница → «Посчитать» → записать решение → посмотреть итог недели. Деньги, проверка личности и сделки — на бирже-партнёре, приложение их не хранит и заявки не отправляет.`;
 
 function contextNote() {
   const m = M();
@@ -927,7 +1146,7 @@ function contextNote() {
 }
 
 let chat = [], busy = false, rec = null;
-const SUGGEST = ['Что такое плата за плечо?', 'Почему сумма стала меньше?', 'Вырастет ли биткоин на этой неделе?', 'На бирже $8 000, терять готов $400'];
+const SUGGEST = ['Я новичок, с чего начать?', 'Что такое плата за плечо?', 'Почему сумма стала меньше?', 'Вырастет ли биткоин на этой неделе?', 'На бирже $8 000, терять готов $400'];
 
 function chatSheet() {
   return `<div class="chat">
@@ -986,10 +1205,11 @@ function demoAnswer(t) {
   const m = M(), s = t.toLowerCase();
   if (DIRECTION.test(s)) return `Этого я не скажу: куда пойдёт цена, не знает никто, и угадывать я не буду. Могу показать, что видит модель: в 8 из 10 сценариев BTC через неделю будет между **${usd(m.lo)}** и **${usd(m.hi)}**, падение больше 5% — в ${m.tails[0]}% сценариев, рост больше 5% — в ${m.tails[2]}%. Хотите, пересчитаю сумму в пределах вашего лимита ${usd(S.limit)}?`;
   if (/funding|фандинг|плат[аы] за плечо|плечо/.test(s)) return `Плата за плечо (по-английски funding) — это деньги, которыми каждые 8 часов обмениваются те, кто торгует на фьючерсах в долг. Когда она высокая, значит, многие поставили на рост с плечом. ${S.alertOn ? 'Сейчас она выше, чем в 94% дней года, поэтому мы прислали оповещение: при таком перекосе резкие движения случаются чаще.' : 'Сейчас она в обычных пределах.'}`;
-  if (/сумм|меньше|почему/.test(s)) return S.alertOn ? `Риск вырос: при сильном падении модель теперь ожидает около −${pct1(m.bad)} за неделю, а не −8,7%. Чтобы такая неделя стоила вам не больше ${usd(S.limit)}, сумма стала **${usd(calcSum())}** вместо $3 467: ${usd(S.limit)} ÷ ${pct1(m.bad)}. Это информация для пересчёта плана, а не рекомендация — пропустить тоже нормально.` : `Сумма считается так: сколько вы готовы потерять за неделю (${usd(S.limit)}) делим на сильное падение по модели (${pct1(m.bad)}). Сейчас это **${usd(calcSum())}** из ${usd(S.capital)}.`;
+  if (/сумм|меньше|почему/.test(s)) return S.alertOn ? `Риск вырос: при сильном падении модель теперь ожидает около −${pct1(m.bad)} за неделю, а не −8,7%. Чтобы такая неделя стоила вам в среднем около ${usd(S.limit)}, сумма стала **${usd(calcSum())}** вместо $3 467: ${usd(S.limit)} ÷ ${pct1(m.bad)}. Это информация для пересчёта плана, а не рекомендация — пропустить тоже нормально.` : `Сумма считается так: сколько вы готовы потерять за неделю (${usd(S.limit)}) делим на сильное падение по модели (${pct1(m.bad)}). Сейчас это **${usd(calcSum())}** из ${usd(S.capital)}.`;
   if (/пвт|бирж|закон|легал/.test(s)) return 'В Беларуси покупать и продавать токены за деньги можно только через биржи — резиденты ПВТ (Указ № 367). Поэтому мы ведём только туда, а сама сделка, деньги и проверка личности остаются на бирже.';
   if (/лимит/.test(s)) return `Лимит — сколько вы готовы потерять за неделю, если BTC сильно упадёт (в среднем; бывает и больше). Сейчас он ${usd(S.limit)}, это ${limPct()}. Поменять можно в «Решении на неделю» → «Изменить расчёт» или в профиле.`;
   if (/страх|жадн/.test(s)) return `Индекс страха и жадности сейчас ${m.fg} — ${fgLabel(m.fg)}. Он от 0 до 100 и показывает настроение рынка. В нашу модель он не входит, это общий фон.`;
+  if (/нович|с чего начать|не понимаю|как пользоваться|что делать|зачем/.test(s)) return `Начните с песочницы — там виртуальные ${usd(SAND_CAP)}, ничем не рискуете. Дальше три шага: **1.** На главной нажмите «Посчитать» — увидите, сколько можно держать в биткоине, чтобы плохая неделя обошлась примерно в ваш лимит (${usd(S.limit)}). **2.** Выберите, что решили: сохранить план, только смотреть или пропустить неделю. **3.** Нажмите «Показать итог» — покажу, как бы это сыграло на прошлой неделе. Любое непонятное слово можно нажать — откроется объяснение.`;
   if (/привет|здрав|hello|hi\b/.test(s)) return 'Привет! Чем помочь? Могу объяснить термины, ваш план или оповещение — или ответить на вопрос не про крипту.';
   return 'В демо-режиме я отвечаю только на несколько тем: плата за плечо, сумма в пределах лимита, лимит, индекс страха и жадности, биржи ПВТ. Подключите модель в Профиле → Ассистент, и я отвечу на любой вопрос — кроме того, вырастет или упадёт цена.';
 }
@@ -1087,16 +1307,17 @@ function exModule() {
     <small>Смоделированная оценка, не совет. Модуль не видит ваш баланс и не меняет заявку.</small>`;
 }
 function openExchange() {
-  const isA = S.exPick !== 'Б'; exAmt = ''; exSide = 'buy';
+  /* сумма плана подставлена в форму (в BYN) — пользователь может её изменить, заявку отправляет сам */
+  const isA = S.exPick !== '2', c = calc(); exAmt = c.none || !c.sum ? '' : String(Math.round(c.sum * USD_BYN)); exSide = 'buy';
   exl.innerHTML = `<div class="exwin">
-    <div class="exbar"><i>${isA ? 'А' : 'Б'}</i><div class="rt"><b>Биржа-партнёр ${isA ? 'А' : 'Б'}</b><small>резидент ПВТ · вход и проверка личности на бирже</small></div>
+    <div class="exbar"><i>${isA ? '1' : '2'}</i><div class="rt"><b>${EXCH[isA ? '1' : '2']}</b><small>резидент ПВТ · вход и проверка личности на бирже</small></div>
       <button class="back" data-ex="back">${ico('back')}<span class="hide-m">Вернуться в </span>Crypto Analytics</button></div>
     <div class="exbody">
       <div class="exchart"><div class="expair num"><b>BTC/BYN</b><span>${fmt(BTC_BYN)}</span></div>${exChartSVG()}<small style="color:var(--ex-mut)">Демо-экран биржи. Курс условный.</small></div>
       <div class="exform">
         <div class="extabs"><button class="on" data-side="buy">Купить</button><button data-side="sell">Продать</button></div>
-        <label class="exfld">Сумма, BYN<input inputmode="decimal" placeholder="0" data-exin></label>
-        <div class="exfld">Получу, BTC<b class="num" id="exBtc">0,000000</b></div>
+        <label class="exfld">Сумма, BYN${exAmt ? ' · подставлена из Crypto Analytics' : ''}<input inputmode="decimal" placeholder="0" data-exin value="${exAmt}"></label>
+        <div class="exfld">Получу, BTC<b class="num" id="exBtc">${(num(exAmt) / BTC_BYN).toFixed(6).replace('.', ',')}</b></div>
         ${isA ? `<div class="ourmod" id="ourmod">${exModule()}</div>` : ''}
         <button class="exbtn" data-ex="buy">Купить BTC</button>
         <div class="exzone"><div>${ico('in')}Вход и проверка личности — у биржи</div><div>${ico('wallet')}Деньги, хранение, вывод — у биржи</div><div>${ico('swap')}Сделка и исполнение — у биржи</div></div>
@@ -1105,10 +1326,15 @@ function openExchange() {
   exl.setAttribute('aria-hidden', 'false'); exl.scrollTop = 0;
   requestAnimationFrame(() => exl.classList.add('show'));
 }
+/* возврат с биржи: биржа подключена на чтение — сумму берём оттуда, иначе спрашиваем (журнал хранит факт, а не план) */
 function exBack() {
   closeExchange(); go('journal');
-  const who = exReturn; exReturn = null;
-  setTimeout(() => toast(who ? `Переход к бирже ${who} записан в журнал. Разбор — 25 окт.` : 'Сделка остаётся на бирже. Разбор — через неделю'), 420);
+  const id = exReturn, j = S.journal.find(x => x.id === id); exReturn = null;
+  if (!j) return;
+  const a = Math.round(num(exAmt) / USD_BYN);
+  if (S.trades === 'api') { j.invested = a; if (!a) j.kind = 'skip'; save(); render(); return setTimeout(() => toast(a ? `С биржи (только чтение): внесено ${usd(a)}. Итог — ${j.reviewDate}` : 'С биржи: покупки не было'), 420); }
+  EXB = { id, inv:String(a || j.plan || '') };
+  setTimeout(() => openSheet('exback'), 460);
 }
 function closeExchange() {
   exl.classList.add('hiding'); exl.classList.remove('show'); exl.setAttribute('aria-hidden', 'true');
@@ -1136,9 +1362,9 @@ function renderShell() {
     <aside class="side" aria-label="Разделы">
       <div class="brand"><span class="appic">${ico('logo')}</span>Crypto Analytics</div>
       ${TABS.map(k => `<button class="nav" data-go="${k}">${ico(VIEWS[k].i)}${VIEWS[k].t}</button>`).join('')}
-      <button class="nav" data-act="voice">${ico('mic')}Ассистент</button>
+      <button class="nav" data-act="voice">${ico('mic')}Спросить ассистента</button>
       <div class="grow"></div>
-      <button class="nav me" data-go="profile"><span class="ava sm">${initial()}</span><span class="rt"><b>Профиль</b><small>${S.email ? esc(S.email) : 'демо-аккаунт'}</small></span></button>
+      <button class="nav me" data-go="profile"><span class="ava sm">${initial()}</span><span class="rt"><b>Профиль</b><small>${S.email ? esc(S.email) : S.sandbox ? 'песочница' : 'без почты'}</small></span></button>
     </aside>
     <main class="main"><div id="view"></div></main>
     <nav class="dock" aria-label="Разделы">
@@ -1168,7 +1394,7 @@ function swaps(scope, animate) {
   });
 }
 function viewHTML() {
-  return { today:vToday, scen:vScen, journal:vJournal, sum:vSum, digest:vDigest, archive:vArchive, profile:vProfile, alerts:vAlerts, assistant:vAssistant }[S.view]();
+  return { home:vHome, market:vMarket, journal:vJournal, sum:vSum, digest:vDigest, archive:vArchive, profile:vProfile, alerts:vAlerts, assistant:vAssistant }[S.view]();
 }
 /* nav: 'push' — вглубь, 'pop' — назад, 'tab' — переключение вкладки (мягкое появление), undefined — обновление на месте */
 function renderView(nav) {
@@ -1187,18 +1413,21 @@ function render(opts = {}) {
   if (!shellOn) renderShell();
   renderView(opts.nav);
 }
+const OLD = { today:'home', scen:'market' };   /* старые ссылки v3 */
 function go(v) {
+  v = OLD[v] || v;
   if (!VIEWS[v]) return;
   if (location.hash !== '#/' + v) { location.hash = '/' + v; return; }
   show(v);
 }
 function show(v) {
-  const from = VIEWS[S.view] || VIEWS.today, to = VIEWS[v];
+  const from = VIEWS[S.view] || VIEWS.home, to = VIEWS[v];
   const nav = to.d > from.d ? 'push' : to.d < from.d ? 'pop' : (v === S.view ? undefined : 'tab');
+  if (v === 'sum') S.seenSum = true;
   S.view = v; save(); render({ nav: nav || 'tab' }); window.scrollTo({ top:0 });
 }
 addEventListener('hashchange', () => {
-  const v = location.hash.replace('#/', '');
+  const v = OLD[location.hash.replace('#/', '')] || location.hash.replace('#/', '');
   if (S.onb !== 'done' || !VIEWS[v] || v === S.view) return;
   closeSheet(); show(v);
 });
@@ -1212,51 +1441,73 @@ function setAlert(on) {
   if (on) setTimeout(alertBanner, 250); else toast('Рынок успокоился');
 }
 function record(kind, extra) {
-  const c = calc();
-  const e = Object.assign({ id:Date.now(), date:'18 окт.', kind, plan:c.sum || 0, pending:true, reviewDate:'25 окт.', hyp:S.hyp, conf:S.conf, note:S.note }, extra || {});
-  const j0 = S.journal[0];
-  if (j0 && j0.date === '18 окт.' && j0.pending) S.journal[0] = Object.assign(e, { id:j0.id }); else S.journal.unshift(e);
-  if (kind === 'save' || kind === 'ex' || kind === 'sand') S.plan = { amount:c.sum, date:'18 окт.' };
+  const c = calc(), date = dShort(0);
+  const e = Object.assign({ id:Date.now(), date, kind, plan:c.sum || 0, limit:S.limit, pending:true, reviewDate:dShort(7), sand:S.sandbox, hyp:S.hyp, conf:S.conf, note:S.note }, extra || {});
+  /* одно решение на неделю в каждом режиме: новое за сегодня заменяет прежнее */
+  const i = S.journal.findIndex(j => j.date === date && j.pending && !j.demo && !!j.sand === S.sandbox);
+  if (i >= 0) S.journal[i] = Object.assign(e, { id:S.journal[i].id }); else S.journal.unshift(e);
+  if ((kind === 'plan' || kind === 'ex') && !S.sandbox) S.plan = { amount:c.sum, date };
   S.hyp = null; S.conf = null; S.note = ''; S.hypOpen = false; save();
+  return e;
 }
+/* у песочницы и реального режима свои баланс и лимит: переключение ничего не сбрасывает */
 function setSandbox(on) {
   if (on === S.sandbox) return;
+  S.acc[S.sandbox ? 'sand' : 'real'] = { capital:S.capital, limit:S.limit, limitAuto:S.limitAuto };
   S.sandbox = on;
-  if (on) { S.realCap = S.capital; setCapital(SAND_CAP); } else setCapital(S.realCap || 5000);
-  if (S.limitAuto === false && on) { S.limitAuto = true; S.limit = autoLim(S.capital); }
+  const n = S.acc[on ? 'sand' : 'real'] || (() => { const c = walletsTotal() || 1000; return { capital:c, limit:autoLim(c), limitAuto:true }; })();
+  Object.assign(S, n); S.pick = 'plan'; S.veil = false;
 }
+function walletsChanged() {
+  const t = walletsTotal();
+  if (!S.sandbox) setCapital(t);
+  else if (S.acc.real) { S.acc.real.capital = t; if (S.acc.real.limitAuto) S.acc.real.limit = autoLim(t); }
+  save();
+}
+function finishOnb() {
+  if (!S.wallets.length) S.wallets.push({ id:'m' + Date.now(), kind:'manual', name:'Мой баланс', bal:S.capital });
+  S.realReady = true; S.onb = 'done'; S.view = 'home'; save();
+  history.replaceState(null, '', '#/home'); render({ nav:'tab' });
+  setTimeout(() => toast(`Баланс ${usd(S.capital)} и лимит ${usd(S.limit)} сохранены`), 200);
+}
+function toReal() {
+  setSandbox(false);
+  if (!S.realReady) { S.onb = 0; S.fromSand = true; S.customCap = false; save(); return render({ dir:'fwd' }); }
+  save(); render(); toast(`Реальный режим · баланс ${usd(S.capital)}`);
+}
+const fieldErr = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
 let exReturn = null;
 document.addEventListener('click', e => {
-  const t = e.target.closest('button,[data-act],summary'); if (!t || exl.contains(t) || t === banner) return;
+  const t = e.target.closest('button,[data-act],summary'); if (!t || exl.contains(t) || t === banner || t.disabled) return;
   const d = t.dataset;
+  if (d.term) return openSheet('term', d.term);
   if (d.go) { closeSheet(); if (d.go === 'sum') { S.veil = !!d.veil; save(); } return go(d.go); }
   if (d.seg) { const [k, v] = d.seg.split(':'); S[k] = v; save(); return render(); }
   if (d.sheet) return openSheet(d.sheet);
+  if (d.wallet) return openSheet('wallet', d.wallet);
+  if (d.coin) return openSheet('coin', +d.coin);
+  if (d.pick) { S.pick = d.pick; save(); document.querySelectorAll('[data-pick]').forEach(b => { b.classList.toggle('on', b === t); b.setAttribute('aria-checked', b === t); }); return; }
   if (d.cap) { if (d.cap === 'custom') S.customCap = true; else { S.customCap = false; setCapital(+d.cap); } save(); return render(); }
   if (d.limpct) { S.limit = Math.max(10, Math.round(S.capital * +d.limpct)); S.limitAuto = +d.limpct === LIMIT_PCT; save(); return limChanged(); }
   if (d.themeSet) { setTheme(d.themeSet); t.parentNode.querySelectorAll('button').forEach(b => { b.classList.toggle('on', b === t); b.setAttribute('aria-checked', b === t); }); return; }
-  if (d.consent) { S.cons[d.consent] = !S.cons[d.consent]; save(); t.classList.toggle('on', S.cons[d.consent]); t.setAttribute('aria-checked', S.cons[d.consent]); const ok = document.querySelector('[data-onb="done"]'); if (ok) ok.disabled = !(S.cons.model && S.cons.loss); return; }
-  if (d.onb) {
-    if (d.onb === 'done') { if (!(S.cons.model && S.cons.loss)) return; S.consent = { version:TERMS_VERSION, at:new Date().toISOString() }; S.onb = 'done'; S.view = 'today'; save(); history.replaceState(null, '', '#/today'); render({ nav:'tab' });
-      setTimeout(() => toast(S.sandbox ? `Песочница: виртуальные ${usd(S.capital)}` : `Баланс ${usd(S.capital)} и лимит ${usd(S.limit)} сохранены`), 200); return; }
-    S.onb = +d.onb; save(); return render({ dir: d.back !== undefined ? 'bwd' : 'fwd' });
-  }
-  if (d.country) { S.country = d.country; save(); root.querySelectorAll('.pick').forEach(p => p.classList.toggle('on', p.dataset.country === S.country)); return; }
+  if (d.consent) { S.cons[d.consent] = !S.cons[d.consent]; save(); t.classList.toggle('on', S.cons[d.consent]); t.setAttribute('aria-checked', S.cons[d.consent]); const ok = document.querySelector('[data-act="consentok"]'); if (ok) ok.disabled = !(S.cons.model && S.cons.loss && S.country); return; }
+  if (d.onb !== undefined) { S.onb = +d.onb; save(); return render({ dir: d.back !== undefined ? 'bwd' : 'fwd' }); }
+  if (d.country) { S.country = d.country; save(); return refreshSheet(); }
   if (d.alert) return openSheet('alert', d.alert);
   if (d.factor) return openSheet('factor', d.factor);
   if (d.changer) return openSheet('changer', d.changer);
   if (d.news) return openSheet('news', +d.news);
   if (d.jitem) return openSheet('jitem', +d.jitem);
-  if (d.review) { closeSheet(); RV = { id:+d.review, step:0, inv:'', notIn:false, lim:null, conf:null, miss:'' }; return setTimeout(() => openSheet('review'), sheetType ? 280 : 0); }
+  if (d.review) { const j = S.journal.find(x => x.id === +d.review); closeSheet(); RV = { id:+d.review, step:0, inv:String(j.invested ?? j.plan ?? ''), notIn:false, conf:null, miss:'' }; return setTimeout(() => openSheet('review'), sheetType ? 280 : 0); }
   if (d.exgo) {
-    S.exPick = d.exgo; record('ex', { ex:d.exgo }); exReturn = d.exgo;
+    S.exPick = d.exgo; const j = record('ex', { ex:d.exgo }); exReturn = j.id;
     closeSheet(); render(); return setTimeout(openExchange, 160);
   }
+  if (d.exinv !== undefined) { EXB.inv = d.exinv; const i = document.getElementById('exInv'); if (i) i.value = d.exinv; return; }
   if (d.wi) { WI = WI === d.wi ? null : d.wi; return refreshSheet(); }
   if (d.hyp) { S.hyp = S.hyp === d.hyp ? null : d.hyp; save(); return render(); }
   if (d.conf) { S.conf = S.conf === +d.conf ? null : +d.conf; save(); return render(); }
   if (d.rv) { RV.notIn = !RV.notIn; if (RV.notIn) RV.inv = ''; return refreshSheet(); }
-  if (d.rvlim !== undefined) { RV.lim = +d.rvlim; return refreshSheet(); }
   if (d.rvconf !== undefined) { RV.conf = +d.rvconf; return refreshSheet(); }
   if (d.tog !== undefined && d.tog) { S.set[d.tog] = !S.set[d.tog]; save(); t.setAttribute('aria-checked', S.set[d.tog]); return; }
   if (d.max) { S.set.maxDay = +d.max; save(); t.parentNode.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === t)); return; }
@@ -1265,18 +1516,44 @@ document.addEventListener('click', e => {
   if (d.model) { AI.model = d.model; saveAI(); return render(); }
   switch (d.act) {
     case 'close': return closeSheet();
-    case 'back': { const to = d.to || VIEWS[S.view].up || 'today'; return go(to); }
-    case 'login': S.onb = 0; save(); history.replaceState(null, '', location.pathname); return render({ dir:'fwd' });
-    case 'limedit': S.limEdit = !S.limEdit; save(); return render();
-    case 'sandbox': setSandbox(true); S.onb = 1; save(); return render({ dir:'fwd' });
-    case 'sandtog': setSandbox(!S.sandbox); save(); render(); return toast(S.sandbox ? `Песочница: виртуальные ${usd(S.capital)}` : `Песочница выключена · баланс ${usd(S.capital)}`);
-    case 'sandrec': record('sand'); toast('Записано в песочницу'); return go('journal');
-    case 'sandff': S.journal.forEach(j => { if (j.kind === 'sand' && j.pending) Object.assign(j, { pending:false, invested:j.plan, inRange:true, limitOk:true, note:`прошлая неделя: +1,9%, итог +${usd(j.plan * 0.019)}` }); }); save(); render(); return toast('Итог посчитан на прошлой неделе (11–18 окт.)');
+    case 'back': { const to = d.to || VIEWS[S.view].up || 'home'; return go(to); }
+    /* вход: песочница — сразу в приложение, без почты и согласий */
+    case 'sandstart': setSandbox(true); S.onb = 'done'; S.view = 'home'; save(); history.replaceState(null, '', '#/home'); render({ nav:'tab' }); return setTimeout(() => toast(`Песочница: виртуальные ${usd(S.capital)}`), 200);
+    case 'login': S.fromSand = false; setSandbox(false); if (!S.capital) setCapital(1000); S.onb = 0; save(); history.replaceState(null, '', location.pathname); return render({ dir:'fwd' });
+    case 'toland': if (S.fromSand) { S.fromSand = false; setSandbox(true); S.onb = 'done'; } else S.onb = 'land'; save(); return render({ nav:'tab' });
+    case 'onbfinish': if (!emailOk(S.email)) { fieldErr('emErr', S.email.trim() ? 'Похоже, в адресе ошибка. Пример: name@mail.by' : 'Введите почту или нажмите «Позже»'); document.getElementById('emBox')?.classList.add('bad'); return; } return finishOnb();
+    case 'onblater': S.email = ''; return finishOnb();
+    case 'emailsave': if (!emailOk(S.email)) { fieldErr('emErr', S.email.trim() ? 'Похоже, в адресе ошибка. Пример: name@mail.by' : 'Введите почту'); document.getElementById('emBox')?.classList.add('bad'); return; } closeSheet(); save(); render(); return toastSoon('Почта сохранена');
+    case 'sandtog': closeSheet(); if (S.sandbox) return toReal(); setSandbox(true); save(); render(); return toastSoon(`Песочница: виртуальные ${usd(S.capital)}`);
+    case 'sandreset': closeSheet(); S.capital = SAND_CAP; S.limit = autoLim(SAND_CAP); S.limitAuto = true; S.journal = S.journal.filter(j => !j.sand); save(); render(); return toastSoon(`Песочница сброшена: ${usd(SAND_CAP)}`);
+    /* итог в песочнице сразу — на данных прошлой недели; виртуальный баланс меняется на результат */
+    case 'sandff': {
+      closeSheet(); const P = S.journal.filter(j => j.sand && j.pending);
+      if (!P.length) return go(lastResult() ? 'digest' : 'sum');
+      P.forEach(j => { resolve(j, j.kind === 'plan' || j.kind === 'ex' ? j.plan : 0); if (j.result.amt) S.capital += j.result.end; });
+      save(); go('digest'); return toastSoon('Итог посчитан на данных прошлой недели');
+    }
+    case 'decide': {
+      const k = calc().none && S.pick === 'plan' ? 'watch' : S.pick, j = record(k, k === 'plan' ? {} : { invested:0 });
+      toast(k === 'plan' ? (S.sandbox ? 'Записано в песочницу. Итог можно посмотреть сразу' : `План ${usd(j.plan)} записан. Итог — ${j.reviewDate}`) : k === 'watch' ? 'Записали: пока смотрите' : 'Записали пропуск. Сравним через неделю');
+      return go('journal');
+    }
     case 'unveil': { S.veil = false; save(); const v = document.getElementById('veil'); if (v && !reduce()) { v.classList.add('out'); return setTimeout(render, 260); } return render(); }
     case 'recalc': closeSheet(); S.veil = false; return go('sum');
     case 'alerttog': t.setAttribute('aria-checked', !S.alertOn); return setAlert(!S.alertOn);
     case 'nosig': S.noSignal = !S.noSignal; save(); render(); return toast(S.noSignal ? 'Модель молчит: сумма — «Без позиции»' : 'Данные вернулись');
+    case 'demotog': {
+      S.demo = !S.demo; S.journal = S.journal.filter(j => !j.demo);
+      if (S.demo) { S.journal = S.journal.concat(DEMO_J()); if (!S.plan) S.plan = { amount:3467, date:'5 окт.', demo:true }; S.alertOn = true; }
+      else { if (S.plan && S.plan.demo) S.plan = null; S.alertOn = false; }
+      save(); render(); return toast(S.demo ? 'Пример с историей включён' : 'Пример убран — снова чистый старт');
+    }
+    case 'ffweek': {
+      let n = 0; realJ().filter(j => j.pending).forEach(j => { n++; if (j.kind === 'plan' || j.kind === 'ex') { j.pending = false; j.due = true; } else resolve(j, 0); });
+      save(); render(); return toast(n ? 'Прошла неделя (демо): посмотрите, как сыграли решения' : 'Нет решений, которые ждут итога');
+    }
     case 'testbanner': return alertBanner();
+    case 'soon': return toast('Скоро. Пока модель проверена только на биткоине и сроке 7 дней');
     case 'reset': try { localStorage.removeItem(KEY); } catch (e) {} S = DEFAULT(); closeSheet(); fanDrawn = false; history.replaceState(null, '', location.pathname); Object.keys(shown).forEach(k => delete shown[k]); try { sessionStorage.removeItem('ca-intro'); } catch (e) {} render(); return runIntro();
     case 'voice': return openSheet('voice');
     case 'voiceok': setCapital(+d.pcap); S.limit = +d.plim; S.limitAuto = S.limit === autoLim(S.capital); S.veil = false; save(); closeSheet(); toastSoon(`Поняли: ${usd(S.capital)}, готовы потерять ${usd(S.limit)}`); return go('sum');
@@ -1284,24 +1561,40 @@ document.addEventListener('click', e => {
     case 'aisave': { AI.key = (document.getElementById('aiKey')?.value || '').trim(); AI.proxy = (document.getElementById('aiProxy')?.value || '').trim(); const cm = (document.getElementById('aiModel')?.value || '').trim(); if (cm) AI.model = cm; saveAI(); render(); return toast(aiLive() ? 'Ассистент подключён: ' + modelName() : 'Ассистент в демо-режиме'); }
     case 'aiclear': AI = { key:'', proxy:'', model:MODELS[0].id }; saveAI(); render(); return toast('Ключ удалён из браузера');
     case 'hyp': S.hypOpen = !S.hypOpen; save(); return render();
-    case 'watch': record('watch', { plan:0 }); toast('Наблюдаем. Сообщим, если сумма изменится'); return go('journal');
-    case 'saveplan': record('save'); toast('План сохранён в журнале'); return go('journal');
-    case 'skip': record('skip', { plan:0 }); toast('Пропустил. Сравним через неделю'); return go('journal');
-    case 'toex': return openSheet('exit');
+    case 'toex': if (S.sandbox) return toast('В песочнице биржи нет: деньги виртуальные'); return openSheet('exit');
+    case 'consentok': if (!(S.cons.model && S.cons.loss && S.country)) return; S.consent = { version:TERMS_VERSION, at:new Date().toISOString() }; save(); return refreshSheet();
+    case 'exsave': {
+      const j = S.journal.find(x => x.id === EXB.id), v = num(document.getElementById('exInv')?.value ?? EXB.inv);
+      if (j) { j.invested = v; if (!v) j.kind = 'skip'; } save(); closeSheet(); render(); return toastSoon(v ? `Записали: ${usd(v)} на бирже. Итог — ${j ? j.reviewDate : dShort(7)}` : 'Записали: покупки не было');
+    }
     case 'totrades': S.jseg = 'trades'; save(); return go('journal');
     case 'rvnext': {
       const j = S.journal.find(x => x.id === RV.id);
-      if (RV.step === 1 && (RV.notIn || !num(RV.inv))) { RV.notIn = true; RV.step = 3; return refreshSheet(); }
-      if (RV.step < 4) { RV.step++; return refreshSheet(); }
-      if (RV.notIn) { j.kind = 'skip'; j.inRange = true; } else { j.invested = num(RV.inv); j.limitOk = RV.lim !== 1; j.inRange = true; }
-      j.due = false; j.pending = false; save(); closeSheet(); render(); return toastSoon('Разбор сохранён');
+      if (RV.step === 0 && !RV.notIn && !num(RV.inv)) RV.notIn = true;
+      if (RV.step < 2) { RV.step++; return refreshSheet(); }
+      resolve(j, RV.notIn ? 0 : num(RV.inv)); if (RV.miss) j.note = RV.miss;
+      save(); closeSheet(); go('digest'); return toastSoon('Итог сохранён');
     }
+    case 'manualadd': {
+      const v = num(document.getElementById('wNew')?.value); if (v <= 0) return fieldErr('wErr', 'Введите сумму больше нуля');
+      S.wallets.push({ id:'m' + Date.now(), kind:'manual', name:S.wallets.some(w => w.kind === 'manual') ? 'Отложено' : 'Мой баланс', bal:Math.round(v) });
+      walletsChanged(); closeSheet(); render(); return toastSoon(`Кошелёк добавлен · для расчёта ${usd(S.capital)}`);
+    }
+    case 'addrconnect': {
+      const a = (document.getElementById('wAddr')?.value || '').trim();
+      if (!/^(bc1[a-z0-9]{25,62}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/.test(a)) return fieldErr('wErr', 'Это не похоже на адрес биткоин-кошелька. Он начинается с bc1, 1 или 3');
+      S.wallets.push({ id:'a' + Date.now(), kind:'address', name:'Адрес …' + a.slice(-4), btc:0.0142, bal:Math.round(0.0142 * PRICE) });
+      walletsChanged(); closeSheet(); render(); return toastSoon('Адрес подключён только на чтение');
+    }
+    case 'wdel': { const w = S.wallets.find(x => x.id === d.w); S.wallets = S.wallets.filter(x => x.id !== d.w); if (w && w.kind === 'exchange') S.trades = false; walletsChanged(); closeSheet(); render(); return toastSoon(w && w.kind !== 'manual' ? 'Отключено' : 'Кошелёк удалён'); }
     case 'api': return openSheet('api');
     case 'apiconnect': {
       const p = S.apiPerm, err = sheet.querySelector('#apiErr');
       if (p.trade || p.withdraw) { err.innerHTML = `<div class="legal"><b>Ключ отклонён.</b> У него есть право ${[p.trade && 'торговли', p.withdraw && 'вывода'].filter(Boolean).join(' и ')}. Создайте на бирже ключ только на чтение.</div>`; return; }
-      if (!p.read) { err.innerHTML = '<div class="legal"><b>Не хватает права на чтение истории.</b></div>'; return; }
-      S.trades = 'api'; save(); closeSheet(); render(); return toastSoon('Подключено только на чтение · 14 сделок');
+      if (!p.read) { err.innerHTML = '<div class="legal"><b>Не хватает права на чтение.</b></div>'; return; }
+      S.trades = 'api';
+      if (!S.wallets.some(w => w.kind === 'exchange')) S.wallets.push({ id:'x1', kind:'exchange', name:EXCH['1'], bal:1240 });
+      walletsChanged(); closeSheet(); render(); return toastSoon('Подключено только на чтение · баланс и 14 сделок');
     }
     case 'csv': S.trades = 'csv'; save(); toast('Файл загружен · 14 сделок'); return render();
     case 'untrades': S.trades = false; save(); toast('Источник сделок отключён'); return render();
@@ -1310,11 +1603,12 @@ document.addEventListener('click', e => {
 /* лимит поменялся с чипа или ползунка: обновляем открытые поля без перерисовки листа */
 function limChanged() {
   const b = document.getElementById('limBig'); if (b) b.textContent = usd(S.limit);
+  const p = document.getElementById('onbPct'); if (p) p.textContent = limPct() + ' · обычно выбирают 3–10%';
   const r = sheet.querySelector('[data-in="limit"]'); if (r) r.value = S.limit;
   const li = document.querySelectorAll('[data-in="lim"]'); li.forEach(x => { if (x !== document.activeElement) x.value = S.limit; });
   document.querySelectorAll('[data-limpct]').forEach(c => c.classList.toggle('on', Math.max(10, Math.round(S.capital * +c.dataset.limpct)) === S.limit));
   calcLive();
-  render();
+  if (S.onb === 'done') render();
 }
 function calcLive() { const r = document.getElementById('calcRes'); if (r) r.innerHTML = calcRes(calc()); }
 document.addEventListener('input', e => {
@@ -1324,9 +1618,11 @@ document.addEventListener('input', e => {
   else if (k === 'lim') { S.limit = Math.max(10, Math.round(num(v)) || 10); S.limitAuto = false; }
   else if (['stop','fee','slip','pos'].includes(k)) { S[k] = v.trim(); }
   else if (k === 'note') { S.note = v; save(); return; }
-  else if (k === 'customcap') { setCapital(num(v) || 5000); save(); const c = document.getElementById('onbCap'), l = document.getElementById('onbLim'), p = document.getElementById('onbPct'); if (c) c.textContent = usd(S.capital); if (l) l.textContent = usd(S.limit); if (p) p.textContent = limPct() + ' · потолок потерь, сумму считаем от него'; return; }
-  else if (k === 'email') { S.email = v; save(); return; }
+  else if (k === 'customcap') { setCapital(num(v) || 1000); save(); const c = document.getElementById('onbCap'); if (c) c.textContent = usd(S.capital); return; }
+  else if (k === 'email') { S.email = v; save(); fieldErr('emErr', ''); document.getElementById('emBox')?.classList.remove('bad'); return; }
   else if (k === 'limit') { S.limit = +v; S.limitAuto = false; save(); return limChanged(); }
+  else if (k === 'wbal') { const w = S.wallets.find(x => x.id === e.target.dataset.w); if (w) { w.bal = Math.max(0, Math.round(num(v))); walletsChanged(); render(); } return; }
+  else if (k === 'exinv') { EXB.inv = v; return; }
   else if (k === 'rvinv') { RV.inv = v; if (num(v)) RV.notIn = false; return; }
   else if (k === 'rvmiss') { RV.miss = v; return; }
   save(); calcLive();
@@ -1334,11 +1630,21 @@ document.addEventListener('input', e => {
   render();
 });
 document.addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('more2')) { S.moreOpen = e.target.open; save(); } }, true);
-document.addEventListener('change', e => { if (e.target.dataset.sel === 'country') { S.country = e.target.value; save(); render(); } });
+document.addEventListener('change', e => { if (e.target.dataset.sel === 'country') { S.country = e.target.value || null; save(); render(); } });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (sheetType) return closeSheet(); if (exl.classList.contains('show')) return exBack(); }
   if (e.key === 'Enter' && e.target.matches && e.target.matches('.inp input[enterkeyhint="done"]')) e.target.blur();
 });
+
+/* живая цена: обновляем только текст цены и «N мин назад», экран не перерисовываем */
+function updateLive() {
+  document.querySelectorAll('[data-live="price"]').forEach(el => { el.textContent = usd(LIVE); if (!reduce()) { el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick'); } });
+  document.querySelectorAll('[data-live="chg"]').forEach(el => { const c = live24(); el.textContent = chg(c) + (el.dataset.suf || ''); el.classList.toggle('up', c > 0); el.classList.toggle('dn', c < 0); });
+  updateAgo();
+}
+function updateAgo() { document.querySelectorAll('[data-ago]').forEach(el => { el.textContent = ago(); }); }
+setInterval(() => { if (document.hidden) return; LIVE = Math.round(PRICE * (1 + (Math.random() - 0.5) * 0.003)); liveAt = Date.now(); updateLive(); }, 15000);
+setInterval(updateAgo, 30000);
 
 /* ---------- старт ---------- */
 document.body.append(layer, banner, toastEl, exl);
@@ -1355,7 +1661,6 @@ function runIntro() {
     <button class="intro-skip" type="button" tabindex="-1">Пропустить</button>`;
   document.body.append(el);
   let done = false;
-  /* стартовый экран уже отрисован под заставкой; когда она начинает таять, проигрываем его вход на глазах у пользователя */
   const start = () => { if (done) return; done = true; document.removeEventListener('keydown', skip, true); if (S.onb === 'land') { landReveal = true; render(); landReveal = false; } };
   const skip = () => { if (!el.isConnected) return; start(); const a = el.animate([{ opacity:getComputedStyle(el).opacity }, { opacity:0 }], { duration:300, easing:'cubic-bezier(.23,1,.32,1)', fill:'forwards' }); a.onfinish = () => el.remove(); };
   el.addEventListener('animationstart', e => { if (e.target === el && e.animationName === 'introOut') start(); });
@@ -1364,7 +1669,8 @@ function runIntro() {
   document.addEventListener('keydown', skip, true);
 }
 
-const startV = location.hash.replace('#/', '');
+const startV = OLD[location.hash.replace('#/', '')] || location.hash.replace('#/', '');
+if (!VIEWS[S.view]) S.view = 'home';
 if (S.onb === 'done' && VIEWS[startV]) S.view = startV;
 if (S.onb === 'done') history.replaceState(null, '', '#/' + S.view);
 render({ nav:'tab' });
