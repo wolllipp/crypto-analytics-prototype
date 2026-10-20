@@ -775,14 +775,26 @@ body.touring{overflow:hidden}
   .hrow .wstack{flex:1}
   .hrow .wstack>.wcard:last-child{flex:1}
   .hrow .wfoot{margin-top:auto}
-  /* быстрые действия на десктопе — ряд компактных кнопок под кошельком, а не круги как на телефоне */
-  .home .qas{padding:0;gap:var(--s2)}
-  .home .qa{flex-direction:row;justify-content:center;gap:8px;min-height:44px;padding:0 14px;border-radius:var(--r-pill);background:var(--card);transition:background-color var(--t-fast) ease}
-  .home .qai{width:auto;height:auto;background:none;border-radius:0}
-  .home .qai svg{width:18px;height:18px}
-  .home .qal{font-size:var(--fs-body)}
+  /* быстрые действия на десктопе — компактные кнопки в шапке справа, а не круги как на телефоне */
+  .tb .qas{padding:0;gap:var(--s2)}
+  .tb .qa{flex:none;flex-direction:row;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:var(--r-pill);background:var(--card);transition:background-color var(--t-fast) ease}
+  .tb .qai{width:auto;height:auto;background:none;border-radius:0}
+  .tb .qai svg{width:18px;height:18px}
+  .tb .qal{font-size:var(--fs-body)}
   .home .herocard.core{justify-content:center}
   /* второй ряд уже первого: «Деньги» и «На эту неделю» читаются как главные, ряд ниже — как второстепенный */
-  .hrow2{width:84%;align-self:center}
-}
-@media (min-width:900px) and (hover:hover) and (pointer:fine){ .home .qa:hover{background:var(--card-2)} }
+  .hrow2{width:76%;align-self:center}
+  /* всё в один экран: плотнее ритм, у верхних кошельков в стопке видна только полоса с названием,
+     во втором ряду — по одной строке на заголовок и подпись (полный текст — по нажатию) */
+  .shell:has(.home) .main{padding-top:20px;padding-bottom:20px}
+  .shell:has(.home) .tb{margin-bottom:var(--s3)}
+  .home{gap:var(--s6)}
+  .hrow .wcard.peek{flex:none;margin-bottom:-96px}
+  .home .herocard.core{padding:24px 24px 20px}
+  .home .core .pill{margin-top:var(--s2)}
+  .hrow2 .row{min-height:48px;padding-top:8px;padding-bottom:8px}
+  .hrow2 .row b,.hrow2 .row small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hrow2 .cl small{display:block}
+  .hrow2 .coach .row.next{min-height:56px}
+
+@media (min-width:900px) and (hover:hover) and (pointer:fine){ .tb .qa:hover{background:var(--card-2)} }
