@@ -723,3 +723,24 @@ select{background:transparent;border:0;color:var(--mut);font-size:var(--fs-body)
 .w-empty .wfoot{border-top-color:var(--line);color:var(--mut)} .w-empty .wfp b{color:var(--fg)}
 .w-empty .wfoot small.up{color:var(--up)} .w-empty .wfoot small.dn{color:var(--down)}
 .wcard.peek{margin-bottom:-90px}
+
+/* ---------- «Как пользоваться»: обводка области, затемнение остального, подпись рядом ---------- */
+:root{--tour-dim:rgba(0,0,0,.74)}
+:root[data-theme="light"]{--tour-dim:rgba(0,0,0,.55)}
+@media (prefers-color-scheme:light){ :root:not([data-theme="dark"]){--tour-dim:rgba(0,0,0,.55)} }
+.tour{position:fixed;top:0;left:0;right:0;bottom:0;z-index:120;display:none}
+.tour.on{display:block}
+.tour-hole{position:absolute;top:0;left:0;width:0;height:0;border-radius:20px;pointer-events:none;
+  box-shadow:0 0 0 2px rgba(255,255,255,.9),0 0 0 9999px var(--tour-dim);
+  transition:transform 360ms var(--ease-out),width 360ms var(--ease-out),height 360ms var(--ease-out),border-radius 360ms var(--ease-out)}
+.tour-tip{position:absolute;top:0;left:0;width:340px;background:var(--sheet);color:var(--fg);border-radius:var(--r-lg);padding:16px 16px 10px;display:flex;flex-direction:column;gap:6px;box-shadow:0 20px 50px rgba(0,0,0,.45);
+  transition:transform 360ms var(--ease-out)}
+.tour.instant .tour-hole,.tour.instant .tour-tip{transition:none}
+.tour-tip small{font-size:var(--fs-fine);color:var(--mut);font-weight:600}
+.tour-tip b{font-size:var(--fs-lead);font-weight:700;letter-spacing:-.02em}
+.tour-tip p{font-size:var(--fs-body);line-height:1.4;color:var(--fg)}
+.tour-btns{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-top:var(--s1)}
+.tour-btns .btn{width:auto;min-height:44px;padding:0 20px;border-radius:var(--r-pill)}
+.tour-btns .btn.link{padding:0 8px;color:var(--mut)}
+body.touring{overflow:hidden}
+@media (prefers-reduced-motion:reduce){ .tour-hole,.tour-tip{transition:none} }

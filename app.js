@@ -733,6 +733,7 @@ function vProfile() {
       ${grp([
         row({ glyph:'bell', title:'Оповещения', sub:'события, частота, тихие часы', attrs:'data-go="alerts"' }),
         row({ glyph:'logo', title:'Ассистент', sub:aiLive() ? 'подключён: ' + esc(modelName()) : 'демо-режим', attrs:'data-go="assistant"' }),
+        row({ glyph:'spark', title:'Как пользоваться', sub:'короткий тур по главному экрану', attrs:'data-act="tour"' }),
         row({ glyph:'info', title:'Как читать прогноз', sub:'4 правила', attrs:'data-sheet="rules"' }),
         row({ glyph:'shield', title:'Условия использования', sub:S.consent ? `приняты ${new Date(S.consent.at).toLocaleDateString('ru-RU')}` : 'примете перед переходом на биржу', attrs:'data-sheet="terms"' }),
         row({ glyph:'wallet', title:'Подписка', val:'бесплатно' }),
@@ -1403,6 +1404,7 @@ function renderView(nav) {
   if (!nav) morphFan();
   if (key && !sheetType) { const el = view.querySelector(`[data-in="${key}"]`); if (el) { el.value = raw; el.focus({preventScroll:true}); try { el.setSelectionRange(caret, caret); } catch (e) {} } }
   syncChrome();
+  if (S.view === 'home' && !S.tourDone && !tourOn && !tourQueued) { tourQueued = true; setTimeout(() => { tourQueued = false; if (S.view === 'home' && !S.tourDone && !tourOn && !sheetType) startTour(); }, 700); }
 }
 function render(opts = {}) {
   if (S.onb === 'land') { shellOn = false; document.body.classList.remove('docked'); root.innerHTML = vLanding(); return; }
@@ -1477,6 +1479,8 @@ let exReturn = null;
 document.addEventListener('click', e => {
   const t = e.target.closest('button,[data-act],summary'); if (!t || exl.contains(t) || t === banner || t.disabled) return;
   const d = t.dataset;
+  if (d.tour) return d.tour === 'next' ? tourStep(tourI + 1) : d.tour === 'back' ? tourStep(tourI - 1) : endTour();
+  if (tourOn) return;
   if (d.term) return openSheet('term', d.term);
   if (d.go) { closeSheet(); if (d.go === 'sum') { S.veil = !!d.veil; save(); } return go(d.go); }
   if (d.seg) { const [k, v] = d.seg.split(':'); S[k] = v; save(); return render(); }
@@ -1551,6 +1555,7 @@ document.addEventListener('click', e => {
     }
     case 'testbanner': return alertBanner();
     case 'rangetip': S.rangeTip = true; save(); return render();
+    case 'tour': closeSheet(); S.tourDone = false; save(); if (S.view !== 'home') return go('home'); return startTour();
     case 'soon': return toast('Скоро. Пока модель проверена только на биткоине и сроке 7 дней');
     case 'reset': try { localStorage.removeItem(KEY); } catch (e) {} S = DEFAULT(); closeSheet(); fanDrawn = false; history.replaceState(null, '', location.pathname); Object.keys(shown).forEach(k => delete shown[k]); try { sessionStorage.removeItem('ca-intro'); } catch (e) {} render(); return runIntro();
     case 'voice': return openSheet('voice');
@@ -1630,9 +1635,74 @@ document.addEventListener('input', e => {
 document.addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('more2')) { S.moreOpen = e.target.open; save(); } }, true);
 document.addEventListener('change', e => { if (e.target.dataset.sel === 'country') { S.country = e.target.value || null; save(); render(); } });
 document.addEventListener('keydown', e => {
+  if (tourOn) { if (e.key === 'Escape') return endTour(); if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); return tourStep(tourI + 1); } if (e.key === 'ArrowLeft') return tourStep(tourI - 1); return; }
   if (e.key === 'Escape') { if (sheetType) return closeSheet(); if (exl.classList.contains('show')) return exBack(); }
   if (e.key === 'Enter' && e.target.matches && e.target.matches('.inp input[enterkeyhint="done"]')) e.target.blur();
 });
+
+/* ---------- «Как пользоваться»: обводим одну область, остальное затемняем, рядом — подпись простыми словами.
+   Шаги идут по пути пользователя: деньги → действия → цифра недели → путь → разделы → «Спросить».
+   В RN — оверлей с вырезом (например, react-native-copilot); двигаем только положение и размер. */
+const TOUR = () => [
+  { sel:['.wstack'], t:'Ваши деньги', d:S.sandbox ? `Это демо-счёт: виртуальные ${usd(SAND_CAP)}. Всё считается как по-настоящему, но без риска.` : 'Сколько вы выделили на биткоин. Можно ввести вручную или подключить биржу только на чтение — мы не храним деньги и не можем ими распоряжаться.' },
+  { sel:['.qas'], t:'Быстрые действия', d:S.sandbox ? 'Посмотреть итог недели, открыть журнал или перейти к настоящему счёту.' : 'Добавить кошелёк, попробовать демо без денег или перейти на биржу-партнёр.' },
+  { sel:['.core'], t:'Главная цифра недели', d:'Сумма в биткоине, при которой сильное падение обойдётся вам в среднем примерно в ваш лимит. «Открыть расчёт» покажет, из чего она сложилась.' },
+  { sel:['.coach'], t:'Ваш путь', d:'Четыре шага: баланс → расчёт → решение → итог через неделю. Следующий шаг подсвечен — просто нажмите на него.' },
+  { sel:['.dock .tab[data-go="market"]', '.side .nav[data-go="market"]'], t:'Рынок', d:'Где может быть цена через неделю, что влияет на риск и 20 крупнейших монет.' },
+  { sel:['.dock .tab[data-go="journal"]', '.side .nav[data-go="journal"]'], t:'Журнал', d:'Все ваши решения. Через неделю покажем, как каждое из них сыграло.' },
+  { sel:['.dock .mic', '.side .nav[data-act="voice"]'], t:'Спросить', d:'Непонятное слово или цифра? Спросите голосом или текстом — объясним простыми словами.' },
+];
+const tourEl = document.createElement('div'); tourEl.className = 'tour'; tourEl.setAttribute('role', 'dialog'); tourEl.setAttribute('aria-modal', 'true'); tourEl.setAttribute('aria-label', 'Как пользоваться');
+tourEl.innerHTML = '<div class="tour-hole"></div><div class="tour-tip" aria-live="polite"></div>';
+const tourHole = tourEl.querySelector('.tour-hole'), tourTip = tourEl.querySelector('.tour-tip');
+let tourOn = false, tourQueued = false, tourI = -1, tourSteps = [];
+const shown1 = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+const tourTarget = st => { for (const q of st.sel) { const el = document.querySelector(q); if (el && shown1(el)) return el; } return null; };
+function startTour() {
+  if (S.onb !== 'done' || tourOn) return;
+  tourSteps = TOUR().filter(tourTarget); if (!tourSteps.length) return;
+  tourOn = true; tourEl.classList.add('on'); document.body.classList.add('touring'); toastEl.classList.remove('show');
+  tourStep(0, true);
+}
+function tourStep(i, first) {
+  if (!tourOn) return;
+  if (i >= tourSteps.length) return endTour();
+  if (i < 0) return;
+  tourI = i; const st = tourSteps[i], el = tourTarget(st); if (!el) return tourStep(i + 1);
+  const last = i === tourSteps.length - 1;
+  tourTip.innerHTML = `<small class="num">${i + 1} из ${tourSteps.length}</small><b>${st.t}</b><p>${st.d}</p>
+    <div class="tour-btns">${i ? '<button class="btn link press" data-tour="back">Назад</button>' : '<button class="btn link press" data-tour="skip">Пропустить</button>'}<button class="btn w press" data-tour="next">${last ? 'Понятно' : 'Далее'}</button></div>`;
+  const fixed = getComputedStyle(el).position === 'fixed' || el.closest('.dock,.side');
+  if (!fixed) el.scrollIntoView({ block:'center', behavior:reduce() ? 'auto' : 'smooth' });
+  tourEl.classList.toggle('instant', !!first);
+  setTimeout(tourPlace, fixed || reduce() ? 0 : 320);
+  if (!isPhone()) setTimeout(() => tourTip.querySelector('[data-tour="next"]')?.focus({ preventScroll:true }), 0);
+}
+function tourPlace() {
+  if (!tourOn) return;
+  const el = tourTarget(tourSteps[tourI]); if (!el) return;
+  const r = el.getBoundingClientRect(), pad = 8, vw = innerWidth, vh = innerHeight;
+  const rad = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 16;
+  tourHole.style.transform = `translate(${r.left - pad}px,${r.top - pad}px)`;
+  tourHole.style.width = r.width + pad * 2 + 'px'; tourHole.style.height = r.height + pad * 2 + 'px';
+  tourHole.style.borderRadius = rad + pad + 'px';
+  const tw = Math.min(340, vw - 32), th = tourTip.offsetHeight;
+  /* пункт бокового меню на десктопе — подпись справа от него; иначе под областью или над ней */
+  const side = !!el.closest('.side'), below = r.bottom + pad + 12 + th < vh - 16;
+  const top = side ? Math.min(vh - th - 16, Math.max(16, r.top - pad)) : below ? r.bottom + pad + 12 : Math.max(16, r.top - pad - 12 - th);
+  const left = side ? r.right + pad + 16 : Math.min(vw - tw - 16, Math.max(16, r.left + r.width / 2 - tw / 2));
+  tourTip.style.width = tw + 'px'; tourTip.style.transform = `translate(${left}px,${top}px)`;
+  requestAnimationFrame(() => tourEl.classList.remove('instant'));
+}
+function endTour() {
+  if (!tourOn) return;
+  tourOn = false; S.tourDone = true; save();
+  tourEl.classList.remove('on'); document.body.classList.remove('touring');
+  window.scrollTo({ top:0, behavior:reduce() ? 'auto' : 'smooth' });
+  toast('Тур можно повторить: Профиль → «Как пользоваться»');
+}
+addEventListener('resize', () => tourOn && tourPlace());
+addEventListener('scroll', () => tourOn && tourPlace(), { passive:true });
 
 /* живая цена: обновляем только текст цены и «N мин назад», экран не перерисовываем */
 function updateLive() {
@@ -1645,7 +1715,7 @@ setInterval(() => { if (document.hidden) return; LIVE = Math.round(PRICE * (1 + 
 setInterval(updateAgo, 30000);
 
 /* ---------- старт ---------- */
-document.body.append(layer, banner, toastEl, exl);
+document.body.append(layer, banner, toastEl, exl, tourEl);
 addEventListener('resize', () => { if (shellOn) syncChrome(); });
 /* заставка перед стартовым экраном: слова по одному, затем рисуется логотип.
    Один раз за сессию, только CSS-анимации; клик или клавиша пропускают; при «уменьшить движение» не показывается. */
